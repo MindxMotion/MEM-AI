@@ -88,5 +88,9 @@ crane mutate --platform linux/amd64 --append "../layer-${REV}.tar" --label "org.
 九项相关认证、OAuth 会话绑定及 Origin 检查在无真实凭据的 Linux Job 中通过。
 过宽认证选择器曾超过 100 秒预算，未记为通过。正式 MySQL 入口、持久卷、应用迁移和公网
 验收仍须以实际运行结果判定。</p>
+<p>离线交付约束：应用镜像先按 SHA-256 校验并导入 node1 的 containerd，再注册经过验证的
+manifest 摘要别名。应用固定到 node1，使用 <code>imagePullPolicy=Never</code>；
+不能用 Always 向未发布的镜像仓库重新拉取。缺少本地镜像应明确失败，不回退可变标签。
+MySQL 与 Redis 仍按其固定官方摘要使用缓存或正常拉取。</p>
 </body>
 </html>

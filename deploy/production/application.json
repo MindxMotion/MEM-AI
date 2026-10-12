@@ -36,7 +36,7 @@
           "spec": {
             "automountServiceAccountToken": false,
             "hostNetwork": false,
-            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux"},
+            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux", "kubernetes.io/hostname": "node1"},
             "securityContext": {
               "runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001,
               "fsGroup": 10001, "fsGroupChangePolicy": "OnRootMismatch",
@@ -45,7 +45,7 @@
             "containers": [{
               "name": "new-api",
               "image": "registry.invalid/new-api-subpath:37dcccf85f0579e9da2e565291100e5a8741c90b",
-              "imagePullPolicy": "Always",
+              "imagePullPolicy": "Never",
               "workingDir": "/data",
               "command": ["/bin/sh", "-ec"],
               "args": ["set +x\numask 077\nfail() { printf 'NEW_API_REQUIRED_CONFIG_INVALID\\n' >&2; exit 1; }\ncase \"${SQL_DSN:-}\" in new_api_app:*'@tcp('*')/new_api?'*) ;; *) fail ;; esac\ncase \"&${SQL_DSN#*\\?}&\" in *'&tls=true&'*) ;; *) fail ;; esac\n[ -n \"${SESSION_SECRET:-}\" ] && [ -n \"${CRYPTO_SECRET:-}\" ] && [ \"$SESSION_SECRET\" != \"$CRYPTO_SECRET\" ] || fail\ncase \"${REDIS_CONN_STRING:-}\" in redis://new_api:*@new-api-redis.new-api.svc.cluster.local:6379/0) ;; *) fail ;; esac\n[ \"${APP_BASE_PATH:-}\" = /new-api ] && [ \"${SSL_CERT_FILE:-}\" = /run/new-api-ca/mysql-ca.pem ] && [ -s \"$SSL_CERT_FILE\" ] || fail\nexec /new-api --port 3000 --log-dir /data/logs"],

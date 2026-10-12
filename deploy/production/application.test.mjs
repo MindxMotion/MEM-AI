@@ -22,7 +22,7 @@ test("bounded application resources, restricted security and local credential ow
   assert.equal(deployment.spec.replicas, 1);
   assert.deepEqual(deployment.spec.strategy, { type: "Recreate" });
   assert.deepEqual(deployment.spec.selector.matchLabels, { "app.kubernetes.io/name": "new-api" });
-  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux" });
+  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux", "kubernetes.io/hostname": "node1" });
   assert.equal(pod.automountServiceAccountToken, false);
   assert.equal(pod.hostNetwork, false);
   assert.deepEqual(pod.securityContext, {
@@ -34,7 +34,7 @@ test("bounded application resources, restricted security and local credential ow
   });
   assert.deepEqual(app.resources, { requests: { cpu: "250m", memory: "256Mi" }, limits: { cpu: "1000m", memory: "1Gi" } });
   assert.match(app.image, /^registry\.invalid\/new-api-subpath:37dcccf85f0579e9da2e565291100e5a8741c90b$/);
-  assert.equal(app.imagePullPolicy, "Always");
+  assert.equal(app.imagePullPolicy, "Never");
   assert.deepEqual(pvc.spec.accessModes, ["ReadWriteOnce"]);
   assert.equal(pvc.spec.storageClassName, "local-path");
   assert.equal(pvc.spec.resources.requests.storage, "512Mi");
@@ -76,7 +76,7 @@ test("bounded application resources, restricted security and local credential ow
       podSelector: { matchLabels: { "app.kubernetes.io/instance": "apisix", "app.kubernetes.io/name": "apisix" } },
     }], ports: [{ protocol: "TCP", port: 3000 }],
   }]);
-  assert.doesNotMatch(JSON.stringify(manifest), /hostPort|hostPath|NodePort|LoadBalancer|latest|imagePullPolicy":"Never/);
+  assert.doesNotMatch(JSON.stringify(manifest), /hostPort|hostPath|NodePort|LoadBalancer|latest/);
 });
 
 test("actual manifest startup guard refuses SQLite, missing config and unsafe TLS without leaking values", () => {
