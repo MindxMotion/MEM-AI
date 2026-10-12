@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New API independent deployment</title>
+<body>
+<h1>New API 独立上线</h1>
+<p>在现有集群单独部署 New API，入口为 <code>https://thedoorofai.com/new-api/</code>。复用 MySQL 基础设施，使用独立 Redis；不接入 MindMotion 的用户、积分、凭据或业务数据。</p>
+<table>
+<thead><tr><th>验收</th><th>合同</th></tr></thead>
+<tbody>
+<tr><td>DEP-01 路由</td><td>入口、资源、管理接口、导航及深层刷新均限定在新前缀；原有根路径和 API 路由不变。保留原项目根路径部署能力。</td></tr>
+<tr><td>DEP-02 隔离</td><td>独立 namespace、Secret、数据库和最小权限账号。使用独立 Redis 实例，保留上游需要的 SCAN 功能，避免枚举或影响 MindMotion 键。</td></tr>
+<tr><td>DEP-03 会话</td><td>HTTPS、固定独立会话密钥、精确可信 Origin；管理认证、Cookie 与回调不能逃逸前缀。管理员初始化不得公开为无人认领的入口。</td></tr>
+<tr><td>DEP-04 运行</td><td>不可变镜像、单副本及受限资源；健康探针、数据库连接和重启持久性验证通过。上线不自动新增付费上游、充值或公开注册。</td></tr>
+<tr><td>DEP-05 恢复</td><td>变更只涉及新应用及其专用数据库、Redis 身份和路由；失败撤下新入口，不改既有应用或共享数据库服务。</td></tr>
+<tr><td>DEP-06 许可</td><td>保留上游署名、许可证和原项目链接；公开修改标记及运行版本对应源码获取入口，不包含部署凭据。</td></tr>
+</tbody>
+</table>
+<p>集群和既有服务健康，新前缀未被占用。经授权通过 RDS API 创建了独立数据库和普通账号，专用 DDL/DML 验证通过；账号附带的全局查询、复制及系统表权限仍需已有 SQL 授权账号定向撤销。使用项目锁定 MySQL 驱动和 Go 1.26.1 编译的 Linux amd64 探针已通过私网连接、区域 CA、主机名及非空 TLS 密码套件检查，没有禁用证书验证；应用完整启动仍需验证。部署凭据仅存于服务器受保护文件。</p>
+<p>用户允许测试服务中断，但共享 Redis 的 ACL 无法过滤 SCAN 枚举结果；禁用 SCAN 又破坏 New API 缓存失效功能。因此选择独立 Redis，不改动或重启 MindMotion。新实例仍需受限命令、固定独立凭据及限定网络访问。计划替换 Redis 时须停止 New API 写入并冷启动客户端，不能让旧缓存重新填入已丢失的认证栅栏。</p>
+<p>同域子路径只能区分路由和 Cookie 发送范围，不能隔离 JavaScript、localStorage 或整个浏览器 Origin。这里的独立性指服务端账号、数据和生命周期，不代表浏览器安全域隔离。若要求浏览器安全域独立，应使用独立主机名；当前子路径选择不能声明满足这一隔离要求。</p>
+<p>当前实现的严格类型检查、根路径和子路径生产构建通过；子路径真实浏览器登录导航、登录页和初始化页刷新通过，无自有请求逃逸前缀。证明使用回环模拟后端，不代表真实认证或流式请求通过。前端定向回归 85 项通过；Go 的前缀、Cookie 发行/删除及相关认证回归通过。广泛认证测试存在 Windows Telegram 和 Passkey SQLite 清理锁失败，未视为通过或取得豁免。源码复审修正了七种语言中源码链接文案的命名空间；参见<a href="../../docs/installation/subpath/design.html">源合同</a>。</p>
+<p>标准 OCI 工具已完成 Linux amd64 交叉编译及本地镜像封装可行性验证，不向镜像仓库推送。该镜像不是最终发布物，尚需精确源码版本、前缀产物及公开源码归档一致。已创建受限 PodSecurity namespace；独立合成 Redis Job 在两次启动中通过 ACL、SCAN、Lua、事务及 Pub/Sub 检查，并证明 deny-all 网络策略阻断对外连接；测试资源已清理。正式 Redis 和入口配置的服务端 dry-run 通过。没有发布应用、真实 Redis 或公网路由。</p>
+<p>未通过子路径、运行时和隔离验证前不开放生产入口。UX/UI 复用上游界面；仅部署前缀和身份隔离，无新视觉设计。验证覆盖构建、根路径与子路径、真实浏览器及生产受限初始化，不以静态 HTML 或健康检查代替登录可用性。</p>
+<h2>固定源码的本地构建</h2>
+<p>从精确提交的干净检出运行以下步骤；Bun 1.4.0、Go 1.26.1 和 crane 0.22.1
+均须校验工具发布校验和。先建立对应源码归档，再将它放入已构建的前端目录，
+最后编译嵌入前端的 Go 程序。VERSION 在上游基线为空，修改版使用明确的提交身份，
+不冒充上游发行版。镜像仅在本地生成，部署前仍需检查元数据、散列及运行行为。</p>
+<pre><code>REV=$(git rev-parse HEAD)
+BUILD_ID="subpath-${REV}"
+git archive --format=tar.gz --prefix="new-api-${REV}/" --output="../source-${REV}.tar.gz" "$REV"
+(cd web &amp;&amp; bun install --frozen-lockfile &amp;&amp; VITE_APP_BASE_PATH=/new-api VITE_CORRESPONDING_SOURCE_URL=/new-api/source.tar.gz VITE_REACT_APP_VERSION="$BUILD_ID" bun --bun run build)
+cp "../source-${REV}.tar.gz" web/dist/source.tar.gz
+PGO="$(go list -m -f '{{.Dir}}' github.com/Calcium-Ion/moejs)/default.pgo"
+GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOEXPERIMENT=greenteagc go build -pgo="$PGO" -ldflags="-s -w -X github.com/QuantumNous/new-api/common.Version=$BUILD_ID" -o "../new-api-${REV}" .
+python3 deploy/production/package-layer.py . "../new-api-${REV}" "../layer-${REV}.tar"
+crane mutate --platform linux/amd64 --append "../layer-${REV}.tar" --label "org.opencontainers.image.revision=$REV" --env APP_BASE_PATH=/new-api --output "../image-${REV}.tar" --tag "new-api-subpath:${REV}" calciumion/new-api@sha256:d47c618ef9f3f542fc75285ab962b6019ca8c09e6b2191d33aa1ad37e9ce64f0</code></pre>
+</body>
+</html>

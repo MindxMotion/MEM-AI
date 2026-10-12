@@ -54,6 +54,7 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getUserModels } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { MOTION_TRANSITION } from '@/lib/motion'
+import { publicSiteBase } from '@/lib/public-base'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
@@ -142,7 +143,7 @@ function saveSetupGuideExpanded(expanded: boolean): void {
 
 function getCurrentOrigin(): string {
   if (typeof window === 'undefined') return ''
-  return window.location.origin
+  return publicSiteBase()
 }
 
 function normalizeEndpoint(sourceUrl?: string): string {

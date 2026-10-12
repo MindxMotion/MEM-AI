@@ -8,6 +8,33 @@ import (
 	"strings"
 )
 
+var SessionRefreshCookiePath = "/api/user/auth"
+var SessionHintCookiePath = "/"
+
+// NormalizeAppBasePath shares the frontend build grammar. A mount is not an
+// origin/security boundary and must never be derived from request headers.
+func NormalizeAppBasePath(raw string) (string, error) {
+	if raw == "" || raw == "/" {
+		return "", nil
+	}
+	if !strings.HasPrefix(raw, "/") {
+		return "", fmt.Errorf("APP_BASE_PATH must be an absolute local path of ASCII segments")
+	}
+	prefix := strings.TrimSuffix(raw, "/")
+	for segment := range strings.SplitSeq(prefix[1:], "/") {
+		if segment == "" {
+			return "", fmt.Errorf("APP_BASE_PATH contains an empty segment")
+		}
+		for _, c := range segment {
+			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' {
+				continue
+			}
+			return "", fmt.Errorf("APP_BASE_PATH contains an invalid segment")
+		}
+	}
+	return prefix, nil
+}
+
 // NormalizeOrigin validates and canonicalizes a browser origin. Only an exact
 // scheme/host/effective-port match is meaningful; paths and wildcards are not
 // accepted for authentication cookie endpoints.
@@ -42,6 +69,12 @@ func NormalizeOrigin(raw string) (string, error) {
 }
 
 func InitSessionCookieSettings() error {
+	prefix, err := NormalizeAppBasePath(os.Getenv("APP_BASE_PATH"))
+	if err != nil {
+		return err
+	}
+	SessionRefreshCookiePath = prefix + "/api/user/auth"
+	SessionHintCookiePath = prefix + "/"
 	secureRaw := strings.TrimSpace(os.Getenv("SESSION_COOKIE_SECURE"))
 	trustedURLsRaw := strings.TrimSpace(os.Getenv("SESSION_COOKIE_TRUSTED_URL"))
 

@@ -1,0 +1,146 @@
+# Dedicated New API instance. Namespace is owned by the parent deployment.
+# Apply only after review; never apply this manifest in mindmotion.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: new-api-redis-ingress
+  namespace: new-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: new-api-redis
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: new-api
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: new-api
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: new-api-redis
+  namespace: new-api
+  labels:
+    app.kubernetes.io/name: new-api-redis
+    app.kubernetes.io/part-of: new-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: new-api-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: new-api-redis
+        app.kubernetes.io/part-of: new-api
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7.4.11-alpine3.21@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 077
+              test -s /run/redis-auth/password
+              password_hash="$(sha256sum /run/redis-auth/password | cut -d ' ' -f 1)"
+              printf '%s\n' 'user default reset off' > /run/redis/users.acl
+              # All keys belong only to this instance. SCAN is required by cachex.
+              # Explicit allowlist: no command categories or administrative grants.
+              printf 'user new_api reset on #%s ~* resetchannels &new-api:wsmanager:channel-close:db:0 -@all %s\n' \
+                "$password_hash" \
+                '+auth +hello +ping +quit +select +client|setinfo +client|setname +get +set +mget +del +unlink +exists +scan +ttl +expire +pexpire +pexpireat +incr +incrby +hget +hgetall +hset +hexists +hincrby +hmget +hmset +llen +lindex +lpush +ltrim +multi +exec +discard +eval +evalsha +script|load +time +publish +subscribe +unsubscribe' \
+                >> /run/redis/users.acl
+              unset password_hash
+              printf '%s\n' 'bind 0.0.0.0' 'protected-mode yes' 'port 6379' \
+                'databases 1' 'aclfile /run/redis/users.acl' 'dir /run/redis' \
+                'save ""' 'appendonly no' 'maxmemory 128mb' 'maxmemory-policy noeviction' \
+                > /run/redis/redis.conf
+              exec redis-server /run/redis/redis.conf
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - 'export REDISCLI_AUTH="$(cat /run/redis-auth/password)"; test "$(redis-cli --user new_api --raw ping)" = PONG'
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - 'export REDISCLI_AUTH="$(cat /run/redis-auth/password)"; test "$(redis-cli --user new_api --raw ping)" = PONG'
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          volumeMounts:
+            - name: auth
+              mountPath: /run/redis-auth
+              readOnly: true
+            - name: runtime
+              mountPath: /run/redis
+      volumes:
+        - name: auth
+          secret:
+            secretName: new-api-redis-auth
+            defaultMode: 0440
+            items:
+              - key: password
+                path: password
+        - name: runtime
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: new-api-redis
+  namespace: new-api
+  labels:
+    app.kubernetes.io/name: new-api-redis
+    app.kubernetes.io/part-of: new-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: new-api-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP

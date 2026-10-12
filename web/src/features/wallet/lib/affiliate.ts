@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { publicSiteBase } from '@/lib/public-base'
+
 // ============================================================================
 // Affiliate Functions
 // ============================================================================
@@ -25,5 +27,5 @@ For commercial licensing, please contact support@quantumnous.com
  */
 export function generateAffiliateLink(affCode: string): string {
   if (typeof window === 'undefined') return ''
-  return `${window.location.origin}/sign-up?aff=${affCode}`
+  return `${publicSiteBase()}/sign-up?aff=${affCode}`
 }

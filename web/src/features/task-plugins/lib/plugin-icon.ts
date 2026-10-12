@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { publicPath } from '@/lib/public-base'
+
 export type PluginIconDescriptor =
   | { kind: 'lobe'; name: string }
   | { kind: 'image'; src: string }
@@ -59,7 +61,7 @@ export function resolvePluginIcon(
     return { kind: 'image', src: input.iconSrc }
   }
   if (input.hasIcon) {
-    return { kind: 'image', src: pluginIconUrl(input.key) }
+    return { kind: 'image', src: publicPath(pluginIconUrl(input.key)) }
   }
   const icon = input.icon?.trim()
   if (icon) {

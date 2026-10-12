@@ -6,22 +6,47 @@ import { pluginReact } from '@rsbuild/plugin-react'
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss'
 import { tanstackRouter } from '@tanstack/router-plugin/rspack'
 
+import { normalizeBasePath, validateSourceUrl } from './src/lib/public-path'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
+  const basePath = normalizeBasePath(
+    process.env.VITE_APP_BASE_PATH ?? env.rawPublicVars.VITE_APP_BASE_PATH
+  )
+  const sourceUrl = validateSourceUrl(
+    process.env.VITE_CORRESPONDING_SOURCE_URL ??
+      env.rawPublicVars.VITE_CORRESPONDING_SOURCE_URL ??
+      '',
+    basePath
+  )
+  const assetBase = `${basePath}/`
   const serverUrl =
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
     'http://localhost:3000'
 
   const isProd = envMode === 'production'
-  const devProxy = Object.fromEntries(
-    (['/api', '/v1', '/mj', '/pg'] as const).map((key) => [
-      key,
-      { target: serverUrl, changeOrigin: true },
-    ])
-  ) as Record<string, { target: string; changeOrigin: boolean }>
+  // Proxy runs before Rsbuild strips server.base. Match only relay/management
+  // boundaries, never shell assets or HMR; the upstream receives root paths.
+  const devProxy = [
+    {
+      context: (pathname: string) => {
+        const unmounted = basePath ? pathname.slice(basePath.length) : pathname
+        if (basePath && !pathname.startsWith(`${basePath}/`)) return false
+        return (
+          /^\/(?:api|v1|v1beta|mj|pg)(?:\/|$)/.test(unmounted) ||
+          /^\/[^/]+\/mj(?:\/|$)/.test(unmounted)
+        )
+      },
+      target: serverUrl,
+      changeOrigin: true,
+      ws: true,
+      pathRewrite: (pathname: string) =>
+        basePath ? pathname.slice(basePath.length) : pathname,
+    },
+  ]
 
   return {
     plugins: [pluginReact(), pluginTailwindcss({ optimize: false })],
@@ -53,6 +78,12 @@ export default defineConfig(({ envMode }) => {
       },
     },
     source: {
+      define: {
+        ...env.publicVars,
+        'import.meta.env.VITE_APP_BASE_PATH': JSON.stringify(basePath),
+        'import.meta.env.VITE_CORRESPONDING_SOURCE_URL':
+          JSON.stringify(sourceUrl),
+      },
       entry: {
         index: './src/main.tsx',
       },
@@ -67,11 +98,17 @@ export default defineConfig(({ envMode }) => {
       favicon: './public/favicon.ico',
     },
     server: {
+      base: assetBase,
       host: '0.0.0.0',
       strictPort: false,
       proxy: devProxy,
     },
+    dev: {
+      assetPrefix: assetBase,
+      client: { path: `${basePath}/rsbuild-hmr` },
+    },
     output: {
+      assetPrefix: assetBase,
       // Production optimizations
       minify: isProd,
       target: 'web',

@@ -21,6 +21,7 @@ import axios from 'axios'
 import { t } from 'i18next'
 
 import { publishAuthSessionEvent } from '@/lib/auth-session-sync'
+import { APP_BASE_PATH } from '@/lib/public-base'
 import { hasSessionHint } from '@/lib/session-hint'
 import {
   useAuthStore,
@@ -68,7 +69,7 @@ export class AuthRotationError extends Error {
 }
 
 const authClient = axios.create({
-  baseURL: '',
+  baseURL: APP_BASE_PATH,
   withCredentials: true,
   headers: {
     // no-store forbids storage; no-cache also revalidates any older cached response.

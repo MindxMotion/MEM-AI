@@ -21,6 +21,7 @@ import { useEffect, useCallback } from 'react'
 
 import { DEFAULT_LOGO } from '@/lib/constants'
 import { applyFaviconToDom } from '@/lib/dom-utils'
+import { publicPath } from '@/lib/public-base'
 import { ensureStatus } from '@/lib/status-query'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -84,7 +85,7 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
 
   // Preload logo image when URL changes
   useEffect(() => {
-    const { logo } = config
+    const logo = publicPath(config.logo)
 
     // Skip if logo is already loaded
     if (!logo || logo === loadedLogoUrl) return
@@ -110,7 +111,8 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
 
   return {
     ...config,
+    logo: publicPath(config.logo),
     loading,
-    logoLoaded: config.logo === loadedLogoUrl && !!loadedLogoUrl,
+    logoLoaded: publicPath(config.logo) === loadedLogoUrl && !!loadedLogoUrl,
   }
 }

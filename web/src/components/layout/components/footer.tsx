@@ -22,6 +22,8 @@ import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { DEFAULT_LOGO } from '@/lib/constants'
+import { CORRESPONDING_SOURCE_URL, publicPath } from '@/lib/public-base'
 import { cn } from '@/lib/utils'
 
 interface FooterLink {
@@ -137,6 +139,19 @@ function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
         {t('New API')}
       </a>
       . {t(NEW_API_FOOTER_ATTRIBUTION_KEY)}
+      {CORRESPONDING_SOURCE_URL && (
+        <>
+          {' · '}
+          <span className='text-foreground'>{t('Modified build')}</span>
+          {' · '}
+          <a
+            href={CORRESPONDING_SOURCE_URL}
+            className='text-foreground font-medium underline underline-offset-4 hover:opacity-80'
+          >
+            {t('Corresponding source')}
+          </a>
+        </>
+      )}
     </span>
   )
   if (props.inline) {
@@ -158,7 +173,7 @@ export function Footer(props: FooterProps) {
     demoSiteEnabled,
   } = useSystemConfig()
 
-  const displayLogo = systemLogo || props.logo || '/logo.png'
+  const displayLogo = publicPath(systemLogo || props.logo || DEFAULT_LOGO)
   const displayName = systemName || props.name || 'New API'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
@@ -272,14 +287,14 @@ export function Footer(props: FooterProps) {
           {/* Links columns */}
           {isDemoSiteMode && (
             <div className='grid grid-cols-3 gap-8 md:gap-16'>
-              {displayColumns.map((column, index) => (
-                <div key={index}>
+              {displayColumns.map((column) => (
+                <div key={column.title}>
                   <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
                     {t(column.title)}
                   </p>
                   <ul className='space-y-2.5'>
-                    {column.links.map((link, linkIndex) => (
-                      <li key={linkIndex}>
+                    {column.links.map((link) => (
+                      <li key={`${link.text}:${link.href}`}>
                         <FooterLinkItem link={link} />
                       </li>
                     ))}

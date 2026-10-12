@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>New API dedicated Redis review packet</title>
+<body>
+<h1>Dedicated New API Redis — runtime proof complete, release not applied</h1>
+<p>Current evidence supersedes the historical pending statements below: the restricted
+namespace exists; the isolated synthetic Job passed its ACL contract across two
+Redis startups. An outside-Pod connection succeeded while the test Pod's same
+destination was blocked by deny-all policy. The exact Job and policy were removed.
+Formal Redis resources passed server-side dry-run. Local fixtures: 5 passed,
+1 optional Docker test skipped; the Kubernetes runtime result is separate evidence.
+No application, Redis Deployment, password Secret or public route is live.</p>
+<p>Source: <code>42e694eb60fe3191795c00d416571ced716eb9c4</code>.
+This replaces the rejected shared-Redis proposal. Redis reuse was optional;
+the dedicated instance removes the SCAN enumeration boundary and avoids
+MindMotion interruption or recovery. The AgentV candidate remains uncommitted
+and must not be applied.</p>
+<h2>Owned resources and credentials</h2>
+<p><code>redis.yaml</code> contains only the <code>new-api-redis</code> Deployment,
+ClusterIP Service and Redis ingress NetworkPolicy in <code>new-api</code>.
+Parent owns the Namespace and application deployment. One ingress peer requires
+namespace <code>new-api</code> AND Pod label
+<code>app.kubernetes.io/name=new-api</code>, TCP6379. APISIX has no Redis ingress.
+The policy selects only Redis and has no egress rule; application/DNS egress is
+unchanged. A separate existing app egress policy, if any, must permit this endpoint.</p>
+<p>Single replica, Recreate; exact previously observed Redis7.4.11 image digest;
+128Mi maxmemory/noeviction and 192Mi container limit. UID/GID999, no service-account
+token, read-only root filesystem, dropped capabilities, RuntimeDefault seccomp.
+The mounted password generates only a hash in the tmpfs ACL file.
+Default is reset/off. Missing credentials fail startup; no fallback identity.</p>
+<p><code>redis-secret.sh --apply</code> is explicitly gated and has not been run.
+It requires root, the pinned context, parent-created namespace and a root-owned
+0700 credential directory. It creates only <code>new-api/new-api-redis-auth</code>,
+key <code>password</code>, and atomically publishes
+<code>/root/new-api-deploy/redis.env</code>, mode0600.
+Keys: <code>REDIS_USERNAME</code>, <code>REDIS_PASSWORD</code>,
+<code>REDIS_CONN_STRING</code>. Username <code>new_api</code>; endpoint
+<code>new-api-redis.new-api.svc.cluster.local:6379/0</code>.
+Existing files/identities stop provisioning, rather than rotate or overwrite.
+An unconfirmed Secret-create response retains the private credential package
+for owner reconciliation; it does not trigger automatic retry or rotation.
+The helper never reads or edits <code>credentials.env</code>.</p>
+<h2>ACL contract</h2>
+<p><code>~*</code> is valid only because the whole Redis instance belongs to
+New API. DB0 is the sole configured database; no shared MindMotion DB is reachable.
+Source HMAC token keys remain private. SCAN is allowed so cachex enumeration and
+invalidation retain their source behavior. No command categories are granted.</p>
+<table>
+<thead><tr><th>Verified source seam</th><th>Required commands</th></tr></thead>
+<tbody>
+<tr><td>common/redis.go; user/token caches; auth/session fencing</td>
+<td>GET/SET/MGET/DEL/EXISTS/TTL/EXPIRE, HGET/HGETALL/HSET/HEXISTS/HINCRBY,
+PEXPIRE/PEXPIREAT, EVAL, MULTI/EXEC</td></tr>
+<tr><td>pkg/cachex; subscription and affinity callers</td>
+<td>GET/SET, SCAN MATCH, UNLINK; no global KEYS command needed</td></tr>
+<tr><td>middleware/rate-limit.go; model-rate-limit.go; common/limiter</td>
+<td>INCR/EXPIRE/TTL; LLEN/LINDEX/LPUSH/LTRIM;
+SCRIPT LOAD/EVALSHA with TIME/HMGET/HMSET</td></tr>
+<tr><td>service/notify-limit.go; pkg/perf_metrics metrics.go/flush.go</td>
+<td>GET/SET/INCRBY, hash operations and TTL/EXPIRE with transactions;
+performance flush persists in-memory buckets through SQL, no other Redis scan</td></tr>
+<tr><td>pkg/wsmanager/wsmanager.go</td><td>PUBLISH/SUBSCRIBE/UNSUBSCRIBE only
+on new-api:wsmanager:channel-close:db:0</td></tr>
+<tr><td>Connection and transaction control</td><td>AUTH/HELLO/PING/QUIT/SELECT,
+CLIENT SETNAME/SETINFO; MULTI/EXEC/DISCARD</td></tr>
+</tbody>
+</table>
+<p>The exact allowlist denies ACL, CONFIG, FLUSHDB/FLUSHALL, SHUTDOWN, replication,
+MIGRATE, MODULE, DEBUG, SAVE/BGSAVE, SCRIPT FLUSH and CLIENT KILL. Named identity
+may run arbitrary permitted Lua against its own instance; this does not grant
+administration or access to another Redis service.</p>
+<h2>Ephemeral-cache lifecycle</h2>
+<p>No PVC, RDB or AOF. Restart discards cached users/tokens/sessions,
+auth fences/tombstones, subscription/affinity caches, rate counters and active
+Redis metrics. MySQL remains authoritative. user_cache.go and user_session.go
+hydrate cache misses from SQL and check current auth/session state;
+token_cache.go guards cold fills with fences. No data restore or credential
+rotation is part of a Redis restart.</p>
+<p>Do not assume cache loss preserves every transient security barrier.
+For planned Redis replacement, parent must quiesce New API and drain its
+in-flight/auth mutations before Redis replacement, then cold-start New API
+against the same database. This prevents pre-restart snapshots from repopulating
+lost fences. Unexpected simultaneous Redis loss and in-flight auth mutation
+remains an application-level race to verify, not a claimed guarantee.
+This operation never stops/restarts MindMotion. Rate windows and affinity choices
+reset; lost transient metrics and Pub/Sub events are not replayed.</p>
+<p>128Mi/noeviction is a bounded starting configuration, not a full-load claim.
+192Mi includes the process, client overhead and tmpfs; OOM or maxmemory rejection
+remains possible under load. Parent must verify database-authoritative
+authentication/revocation after cold restart and source behavior on cache errors.</p>
+<h2>Review and verification gates</h2>
+<p><code>node --test deploy/production/redis.test.mjs</code> covers manifest
+ownership, startup hash/default-off behavior and private provisioning guards.
+<code>redis-acl-test.sh</code> is invoked only inside an off-production,
+network-disabled container with synthetic fixtures. It exercises SCAN/UNLINK,
+Lua/EVALSHA, transactions, lists, Pub/Sub and default/admin denial twice,
+across two Redis process startups.</p>
+<p>Runtime command, only where Docker and the pinned image are already available:
+<code>NEW_API_REDIS_DOCKER_TEST=1 node --test deploy/production/redis.test.mjs</code>.
+The harness uses pull=never and removes only its uniquely named container on exit
+or timeout. No new dependency or runtime installation is authorized. Runtime proof is still
+required before rollout; a skip is not an ACL pass.</p>
+<p>Client dry-run using the live API schema passed for all three resources.
+Server-side dry-run returned namespace-not-found because parent has not created
+<code>new-api</code>. No namespace or other resource was created to bypass it.
+Repeat server dry-run after the approved namespace exists, then verify actual
+allowed/denied NetworkPolicy traffic; manifests alone are not enforcement proof.</p>
+<p>Preparation evidence: Bash syntax and Node syntax passed.
+Focused tests: 4 passed, 0 failed, 1 pinned-image runtime test skipped because
+Docker is unavailable. The first manifest assertion failed on CRLF; it was
+corrected to normalize text, and all owned files were formatted to repository
+LF rules using existing dos2unix. Linux Bash syntax is checked without execution.
+No tool installation or dependency restoration was performed.</p>
+<p>Parent must review this exact patch, confirm the app Pod label and strict
+auth/debug-off application settings, run the runtime test and approve the release
+revision before apply. Provision only after namespace creation; apply only
+<code>redis.yaml</code>, wait Ready, then prove the actual New API Go client,
+cold-start authentication/revocation and cache enumeration/invalidation behavior.
+No Redis Secret YAML, password hash, connection string or raw user data may enter
+output. Keep credentials in the private server package.</p>
+<p>OWASP authentication/session guidance URLs could not be fetched in this
+environment. No application auth flow was changed, and no ASVS compliance claim
+is made. Credential handling and source-specific restart limitations are explicit.</p>
+<p>Preparation only. No production mutation, build, dependency addition,
+MySQL operation, public Redis route or MindMotion change.</p>
+<h2>2026-10-12 · isolated Kubernetes runtime candidate</h2>
+<p>Historical Docker runtime skip above remains unchanged. Docker is now optional:
+<code>redis-runtime.mjs</code> reads the actual manifest startup/image and emits
+one synthetic Job plus one deny-all NetworkPolicy. The same contract feeds Docker.
+The test password is generated from /dev/urandom inside tmpfs; no Secret, credential
+package, production connection string or application keys are mounted.
+The only configuration override is loopback binding and the synthetic password path;
+ACL generation remains the manifest implementation.</p>
+<p>Candidate name for both resources:
+<code>new-api-redis-acl-20261012a</code>, namespace <code>new-api</code>.
+Pod has no service-account token, runs UID999 with RuntimeDefault seccomp,
+read-only root and dropped capabilities. It uses only tmpfs and the cached,
+manifest-pinned Redis image on node1, pull policy Never. Deadline120s,
+backoffLimit0 and TTL300s bound lifecycle. Policy ingress and egress are empty,
+selecting only this unique test label; there are no host ports or public services.
+Pub/Sub now waits for an acknowledgement and received-message predicate,
+with bounded retries rather than fixed publication delays.</p>
+<p>Fresh preparation: 5 local tests passed, 0 failed, 1 optional Docker runtime
+test skipped. Synthetic resource client and server dry-runs passed. Parent-owned
+namespace.yaml is present; namespace is observed live with no NetworkPolicies.
+Node1 PodCIDR is 10.233.64.0/24 and the exact Redis digest is cached.
+No Job or policy has been created by this worker. Apply still waits for the
+required parent namespace-apply notification and review of this candidate.</p>
+<pre>node deploy/production/redis-runtime.mjs new-api-redis-acl-20261012a |
+kubectl --context kubernetes-admin@cluster.local -n new-api create --dry-run=server -f -</pre>
+<p>After notification and approval, recheck policy selection: NetworkPolicies are
+additive, so reject any existing rule granting this test Pod external traffic.
+Create the policy before the Job, then wait for completion. Inspect the live
+deny-all selectors, PodIP against node1 PodCIDR, no host networking, running
+imageID and exit0. Require exactly two NEW_API_REDIS_ACL_TEST_PASSED markers.
+Do not print raw exceptions, ACL hashes or fixture contents. Deadline/failure
+is a failed proof, not a retry trigger. Confirm CNI policy enforcement separately;
+policy configuration alone does not prove packet filtering.</p>
+<p>Cleanup only this exact Job (foreground, wait for its Pod removal), then its
+same-named NetworkPolicy. Retain namespace. Never apply redis.yaml or run
+redis-secret.sh as part of this test; MindMotion and real Redis credentials remain
+outside the authorized mutation.</p>
+</body>
+</html>

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,54 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestMountedRefreshAndHintCookieIssuanceAndDeletion(t *testing.T) {
+	previousRefreshPath, previousHintPath := common.SessionRefreshCookiePath, common.SessionHintCookiePath
+	previousSecure, previousOrigins := common.SessionCookieSecure, common.SessionCookieTrustedURLs
+	t.Cleanup(func() {
+		common.SessionRefreshCookiePath, common.SessionHintCookiePath = previousRefreshPath, previousHintPath
+		common.SessionCookieSecure, common.SessionCookieTrustedURLs = previousSecure, previousOrigins
+	})
+	for _, prefix := range []string{"", "/new-api/"} {
+		t.Run(prefix, func(t *testing.T) {
+			t.Setenv("APP_BASE_PATH", prefix)
+			t.Setenv("SESSION_COOKIE_SECURE", "true")
+			t.Setenv("SESSION_COOKIE_TRUSTED_URL", "https://example.com")
+			require.NoError(t, common.InitSessionCookieSettings())
+			mount := strings.TrimSuffix(prefix, "/")
+			for _, clear := range []bool{false, true} {
+				recorder := httptest.NewRecorder()
+				context, _ := gin.CreateTestContext(recorder)
+				if clear {
+					ClearRefreshCookie(context)
+				} else {
+					WriteRefreshCookie(context, "synthetic-cookie-fixture")
+				}
+				cookies := recorder.Result().Cookies()
+				require.Len(t, cookies, 2)
+				assert.Equal(t, RefreshCookieName, cookies[0].Name)
+				assert.Equal(t, SessionHintCookieName, cookies[1].Name)
+				assert.Equal(t, mount+"/api/user/auth", cookies[0].Path)
+				assert.Equal(t, mount+"/", cookies[1].Path)
+				assert.True(t, cookies[0].HttpOnly)
+				assert.False(t, cookies[1].HttpOnly)
+				for _, cookie := range cookies {
+					assert.True(t, cookie.Secure)
+					assert.Equal(t, http.SameSiteStrictMode, cookie.SameSite)
+					assert.Empty(t, cookie.Domain)
+					if clear {
+						assert.Empty(t, cookie.Value)
+						assert.Equal(t, -1, cookie.MaxAge)
+						assert.True(t, cookie.Expires.Before(time.Now()))
+					} else {
+						assert.Positive(t, cookie.MaxAge)
+						assert.True(t, cookie.Expires.After(time.Now()))
+					}
+				}
+			}
+		})
+	}
+}
 
 func setupAuthSessionTestDB(t *testing.T) *model.User {
 	t.Helper()

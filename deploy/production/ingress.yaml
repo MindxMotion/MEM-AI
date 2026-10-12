@@ -1,0 +1,54 @@
+apiVersion: apisix.apache.org/v2
+kind: ApisixRoute
+metadata:
+  name: new-api
+  namespace: new-api
+  labels:
+    app.kubernetes.io/part-of: new-api
+spec:
+  http:
+    - name: canonical-entry
+      match:
+        hosts: [thedoorofai.com]
+        paths: [/new-api]
+        methods: [GET, HEAD]
+      backends:
+        - serviceName: new-api
+          servicePort: 3000
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            uri: https://thedoorofai.com/new-api/
+            ret_code: 308
+            append_query_string: true
+    - name: application
+      websocket: true
+      match:
+        hosts: [thedoorofai.com]
+        paths: [/new-api/*]
+      backends:
+        - serviceName: new-api
+          servicePort: 3000
+          resolveGranularity: service
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            http_to_https: true
+        - name: proxy-rewrite
+          enable: true
+          config:
+            regex_uri: ['^/new-api/(.*)$', '/$1']
+        - name: response-rewrite
+          enable: true
+          config:
+            vars:
+              - [upstream_http_location, '~~', '^/(?!/|new-api(?:[/?#]|$))']
+            headers:
+              set:
+                Location: '/new-api$upstream_http_location'
+      timeout:
+        connect: 10s
+        send: 30s
+        read: 360s

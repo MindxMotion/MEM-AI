@@ -16,8 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { publicPath } from './public-base'
+
 export function applyFaviconToDom(url: string) {
   if (typeof document === 'undefined' || !url) return
+  url = publicPath(url)
   try {
     const next = new URL(url, window.location.href).href
     const existing =

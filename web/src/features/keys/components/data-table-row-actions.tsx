@@ -53,6 +53,7 @@ import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { handleServerError } from '@/lib/handle-server-error'
+import { publicSiteBase } from '@/lib/public-base'
 
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
@@ -69,7 +70,7 @@ function getServerAddress(): string {
   } catch {
     /* empty */
   }
-  return window.location.origin
+  return publicSiteBase()
 }
 
 type DataTableRowActionsProps<TData> = {

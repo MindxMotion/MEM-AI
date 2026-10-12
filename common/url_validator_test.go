@@ -124,10 +124,42 @@ func TestValidateRedirectURL(t *testing.T) {
 
 func resetSessionCookieSettingsAfterTest(t *testing.T) {
 	t.Helper()
+	t.Setenv("APP_BASE_PATH", "")
+	previousRefreshPath, previousHintPath := SessionRefreshCookiePath, SessionHintCookiePath
 	t.Cleanup(func() {
+		SessionRefreshCookiePath, SessionHintCookiePath = previousRefreshPath, previousHintPath
 		SessionCookieSecure = false
 		SessionCookieTrustedURLs = nil
 	})
+}
+
+func TestAppBasePathCookieSettings(t *testing.T) {
+	for _, tc := range []struct{ input, prefix string }{
+		{"", ""}, {"/", ""}, {"/new-api", "/new-api"}, {"/new-api/", "/new-api"}, {"/a_B/9-x/", "/a_B/9-x"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			resetSessionCookieSettingsAfterTest(t)
+			t.Setenv("APP_BASE_PATH", tc.input)
+			t.Setenv("SESSION_COOKIE_SECURE", "")
+			t.Setenv("SESSION_COOKIE_TRUSTED_URL", "")
+			require.NoError(t, InitSessionCookieSettings())
+			assert.Equal(t, tc.prefix+"/api/user/auth", SessionRefreshCookiePath)
+			assert.Equal(t, tc.prefix+"/", SessionHintCookiePath)
+		})
+	}
+	for _, input := range []string{
+		"new-api", " /new-api", "/new-api ", "//host", "https://host/path",
+		"/a//b", "/a//", "/a/../b", "/a/./b", "/a%2fb", "/a?b", "/a#b",
+		"/a\\b", "/a\n", "/中文", "/a.b",
+	} {
+		t.Run(input, func(t *testing.T) {
+			resetSessionCookieSettingsAfterTest(t)
+			t.Setenv("APP_BASE_PATH", input)
+			t.Setenv("SESSION_COOKIE_SECURE", "")
+			t.Setenv("SESSION_COOKIE_TRUSTED_URL", "")
+			require.Error(t, InitSessionCookieSettings(), "invalid mount must fail even without secure cookies")
+		})
+	}
 }
 
 func TestInitSessionCookieSettingsDefaultsToInsecure(t *testing.T) {

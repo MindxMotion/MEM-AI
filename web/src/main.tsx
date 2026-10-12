@@ -23,8 +23,9 @@ import ReactDOM from 'react-dom/client'
 
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
-import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
+import '@/lib/dayjs'
+import { APP_BASE_PATH } from '@/lib/public-base'
 import { createAppQueryClient } from '@/lib/query-client'
 import { readCachedStatus, statusQueryOptions } from '@/lib/status-query'
 
@@ -49,6 +50,7 @@ const queryClient = createAppQueryClient(() => {
 
 // Create a new router instance
 const router = createRouter({
+  basepath: APP_BASE_PATH || '/',
   routeTree,
   context: { queryClient },
   defaultPreload: 'intent',
