@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><title>New API subpath contract</title>
 <h1>New API at /new-api/</h1>
-<p>Status: publicly live at source 0fd5350a371d54cb554eab17be00f7c7f4c36ac1; full transport acceptance remains incomplete. The independently reviewed contract starts at baseline 42e694eb60fe3191795c00d416571ced716eb9c4, branch deploy/new-api-subpath-20261012. The requested same-origin mount is the chosen direction, not browser security isolation. Parent owns ingress, credentials, databases and rollout. No billing, wire-protocol metadata or backend route-group changes; the independent database received the upstream application's initial schema.</p>
+<p>Status: VERIFIED at source 5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68, with the explicitly authorized WVR-01 exception below. The independently reviewed contract starts at baseline 42e694eb60fe3191795c00d416571ced716eb9c4, branch deploy/new-api-subpath-20261012. The requested same-origin mount is the chosen direction, not browser security isolation. Parent owns ingress, credentials, databases and rollout. No billing, wire-protocol metadata or backend route-group changes; the independent database received the upstream application's initial schema. Historical preparation records below describe their original revision; the final release record governs current status.</p>
 <p>UX: N/A as a separate packet: retain existing journeys, authorization, retry/cancel behavior and router destinations; only public URL resolution changes. UI reference: N/A: retain existing components, themes and responsive layout; the corresponding-source link reuses attribution markup, localization and keyboard/link semantics. Separate test design: N/A: the criterion-to-test map below is sufficient using current test conventions and the existing browser fixture. This means extending tests, not that existing tests already prove mounting. No streaming, callback, cookie or browser acceptance is waived.</p>
 <h2>Contract</h2>
 <ul>
@@ -197,6 +197,52 @@ authorized exception remains explicit. Decode malformed-input equivalence is
 bounded to tested vectors; pixel-level math parity is not claimed. Release
 verification must install the frozen lock in a clean checkout rather than rely
 on the earlier corrected, previously stale nested KaTeX directories.</p>
+<h2>Final release verification · 2026-10-12</h2>
+<p>The exact committed release installed 1192 packages with the frozen lock in a
+clean detached checkout. Actual consumers resolved the corrected versions,
+including nested KaTeX. Strict types and the fresh 127-test selection passed;
+the earlier 147-test selection overlaps and is not added. Separate root and
+prefix production builds and real Edge mock-backend journeys passed, including
+both footer source offers, with zero owned-path escapes or page errors.</p>
+<p>The final production image is
+<code>docker.io/library/new-api-subpath@sha256:2262d309ec44eacdf845a282b5bfb8978dc7c2d4c18e538320d4f7bcacdd9de7</code>.
+Its corresponding-source download has SHA-256
+<code>022726c8d2046b62b3cca78bb006608f50592590c412c99b55c3e900eb02a720</code>.
+The fresh real HTTPS Edge run passed login, scoped Secure/Strict cookies,
+renewal, authenticated reload, legacy navigation and UI logout: 129 owned
+requests, zero escapes and zero page errors. Local source-download throughput
+was measured at about56KB/s: the 6,884,048-byte archive took122seconds.
+Earlier30/90-second proof timeouts are not passing runs; a bounded240-second
+download budget then passed the same byte-identity oracle.</p>
+<p>Both the public prefix and a disposable native root backend on the same final
+image passed playground SSE completion/[DONE]/EOF, meaningful HTTP and
+midstream errors, client cancellation with independently observed upstream
+disconnect, authorized channel-pinned relay JSON, native Ollama completion,
+meaningful Ollama error/EOF and downstream abort. Both authorized realtime and
+responses WebSockets returned101, exchanged upstream events and closed1000;
+anonymous requests separately returned401. Ollama upstream cancellation is
+not supported by the current native implementation and is not claimed.
+Root evidence used explicit disposable SQLite, synthetic identities and bounded
+emptyDir, not production MySQL, Secrets, PVCs or routes. The root frontend has
+its own build/browser evidence; this prefix-built image is not that evidence.</p>
+<p>Native channel-cache refresh was respected, with bounded model_not_found
+retries and no restart/cache bypass. All created entities and login sessions were
+removed/revoked; Jobs, Services, policies, Pods, journals, synthetic credentials
+and owned forwards were removed. Final authentication confirms zero channels/
+tokens, both registration controls disabled and the full mounted ServerAddress.
+Three workloads remain Ready and two PVCs Bound. Bare GET/HEAD308/query,
+boundary exclusion and canonical Location/query checks pass; MindMotion200
+and old /api404 remain unchanged. No paid provider was configured.</p>
+<p>Delivery replaced only the owned final application layer of the verified old
+offline archive, preserving five base layers byte-identically and other runtime
+configuration. Four archive tests and complete crane validation passed; remote
+hashes and actual imported manifest identity agree. The app keeps node1/linux/
+amd64 nodeSelector and Never. This dependency/dev-proxy update is schema-neutral.
+Current and compatible0fd5350 recovery archives are retained. Audit remains
+one HIGH and exits1 under WVR-01; verification does not mean a clean audit or
+whole-system security approval. See the
+<a href="../../../deploy/production/design.html">deployment record</a> for
+image/config/archive identities and recovery details.</p>
 <h2>Security references</h2>
 <p>Read OWASP ASVS 5.0.0 release V7 Session Management and V10 OAuth/OIDC; cookie controls reside in V3. Authentication and Session Management Cheat Sheets retrieved from OWASP/CheatSheetSeries because direct OWASP fetch was blocked. Applicable controls include server-side session verification, rotation and invalidation, exact OAuth callback/origin checks, secure cookie transport, narrowly scoped cookie path, and credential-free evidence. No blanket ASVS compliance claim.</p>
 <p><a href="poc.html">Bounded proof</a></p>

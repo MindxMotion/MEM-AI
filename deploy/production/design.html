@@ -7,36 +7,60 @@
 <h1>New API 独立上线</h1>
 <p>在现有集群单独部署 New API，入口为 <code>https://thedoorofai.com/new-api/</code>。采用独立 MySQL 与独立 Redis；不接入 MindMotion 的用户、积分、凭据或业务数据。用户允许但不要求共享基础设施，专用 MySQL 可行性已采纳；RDS 资源和凭据保留但不使用。</p>
 <h2>当前运行状态 · 2026-10-12</h2>
-<p>已公开上线，完整发布验收尚未结束。运行源码为
-<code>0fd5350a371d54cb554eab17be00f7c7f4c36ac1</code>，应用 manifest 摘要为
-<code>sha256:39bfee1db71928b549aded17a2cf0f599da41fa1611b59ae57049f7d0ab0e556</code>。
+<p>VERIFIED：已公开上线并完成本次发布验收。运行源码为
+<code>5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>，应用 manifest 摘要为
+<code>sha256:2262d309ec44eacdf845a282b5bfb8978dc7c2d4c18e538320d4f7bcacdd9de7</code>。
 应用、独立 MySQL 和独立 Redis 均 Ready；私有初始化已认领管理员，关闭两项公开注册，
 保存完整 ServerAddress。真实 HTTPS 浏览器登录、续期、重载、旧控制台导航和退出通过，
-129 个自有请求没有前缀逃逸或页面错误。38 张表完成初始迁移，普通账号 TLS 验证
+新版浏览器的129个自有请求没有前缀逃逸或页面错误。此前38张表完成初始迁移，普通账号 TLS 验证
 CA/主机名、系统表拒绝和最小授权通过；三项工作负载在应用停止期间冷重启后保留账号、
 选项和固定凭据。MindMotion 健康 200，旧 /api 仍为404。</p>
 <p>公开对应源码 SHA-256 为
-<code>341bf5fc92b65de020c7f0fc7ca4ad036656f9cbaf571186f7837f79255b4592</code>；
+<code>022726c8d2046b62b3cca78bb006608f50592590c412c99b55c3e900eb02a720</code>；
 裸入口 GET/HEAD 308、查询保留、前缀边界和局部 Location 改写均通过。
 开发代理的 context 已修正为安装版支持的 pathFilter，本地真实热更新连接/重连及
-根路径/前缀回归通过；该仅开发配置修正尚未纳入运行镜像。真实 HTTPS 流式完成、HTTP
+根路径/前缀回归通过；修正已包含在本次运行源码中。新版真实 HTTPS 流式完成、HTTP
 拒绝、流内错误、客户端取消及8秒内观察到的上游断连、Ollama NDJSON 转 SSE、
-两项授权 WebSocket 握手/事件/正常退出均通过；独立临时根路径后端通过相同项目。
+授权固定渠道 JSON relay、Ollama 明确错误/EOF及下游取消、两项授权 WebSocket
+握手101/事件/正常退出1000均通过；独立临时根路径后端使用同一新镜像，通过相同项目。
+两项匿名 WebSocket 均另行验证401。Ollama 上游取消不受当前原生实现支持，未作此声明。
 根路径证明显式使用一次性 SQLite 和合成身份，不代表把生产 MySQL 改为 SQLite，
 也不代表前缀构建的前端在根路径运行。测试渠道、令牌和会话已清理，独立 Job、
-Service、策略及合成凭据已移除，没有付费调用。新生产依赖审计发现25项继承公告（1 critical、9 high、
-11 moderate、4 low），修复和新镜像交付仍在进行，不宣称最终 VERIFIED。</p>
+Service、策略及合成凭据已移除，没有付费调用。最终状态核验无渠道或令牌实体，
+两项注册仍关闭，三个工作负载 Ready，两个 PVC Bound，持久日志目录有实际文件。
+本次只替换应用镜像；数据库 schema、独立 MySQL/Redis、固定 Secret 和公网路由未改。</p>
 <p>WVR-01：用户已明确接受本测试服务保留 node-forge 1.4.0 的限定豁免，仅限
 <a href="https://github.com/advisories/GHSA-86w9-cpqp-85rv">GHSA-86w9-cpqp-85rv</a>
-及现有 RSA-OAEP/AES-GCM 调用范围。该公告针对 PKCS#1 v1.5 签名验签，尚无已发布
-修复版本；须确认应用不调用受影响验签路径。上游发布修复或项目新增验签时重开。
-其余24项不得豁免；新审计必须只剩该项，再通过类型、兼容性、构建和镜像验收。
+及现有 RSA-OAEP/AES-GCM 调用范围。该公告针对 PKCS#1 v1.5 签名验签，检查时无已发布
+修复版本；源码复审确认唯一 Forge 运行调用不使用受影响验签路径，但该代码仍随库发布。
+上游发布修复或项目新增验签时重开。其余24项已修复；冻结安装的审计只剩该项，
+类型、兼容性、构建和镜像验收通过。
 允许限定豁免不等于审计零公告或整体安全认证。</p>
 <p>依赖切片已完成：24项有修复版本的公告已处理，最新审计退出1且仅剩WVR-01这一项
 HIGH。类型检查、147项定向测试、实际依赖消费者检查和子路径生产构建通过，保留39项
 提取的许可证文件。复审确认 Axios 配置辅助函数复用和四项 mock 类型标注不改变请求/
-错误语义；未更改密码加密。新冻结锁将从干净检出实际安装和构建，再交付新不可变镜像，
-不能用旧 node_modules 中清理后的状态代替可重复安装。运行镜像仍为上面的0fd5350版本。</p>
+错误语义；未更改密码加密。精确提交的干净检出实际冻结安装1192个包，依赖消费者解析无
+旧嵌套 KaTeX；严格类型及独立127项定向测试、根路径/前缀生产构建和两个模式的浏览器/
+两种页脚源码下载通过。147与127来自重叠选择，不相加。根路径浏览器使用单独根构建，
+不能把前缀前端直接当作根路径兼容证据。</p>
+<h3>不可变交付与恢复</h3>
+<p>镜像 tag 为 <code>new-api-subpath:5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>，
+config 摘要为 <code>sha256:7898b1fb780b9dcb7e4f139b4e8ba40c7871d083315cb126d273c83a6f830546</code>，
+交付归档 SHA-256 为 <code>8a791053b89afb9db67766c634f2fbaa549b5f8c86dd26b3cab1588230279525</code>。
+context 为 kubernetes-admin@cluster.local，namespace/workload 为 new-api。
+应用保留原 nodeSelector 的 node1/linux/amd64 与 Never，按实际 manifest 摘要部署，
+不把 config 摘要当作拉取身份。新 Pod 为 new-api-5855f7d6df-5pxzt。</p>
+<p>公共基础镜像层下载停滞，固定 Go SDK 的依赖下载也受阻。实际交付采用标准库离线工具，
+严格绑定已验证旧归档，只替换最终自有应用层，五个基础层逐字节保留；不追加重复应用层，
+不改其他运行配置。四项归档不变量检查和完整 crane 离线校验通过，传输散列与导入身份
+另行核对。SDK 尝试未产出镜像，不记为成功构建。首次渲染误用 nodeName 而清单采用
+nodeSelector，在任何 apply 前停止；修正守卫以校验实际三项 selector 后，服务端 dry-run、
+apply和 rollout 通过。未降低节点约束。</p>
+<p>保留当前归档和 schema 兼容的0fd5350恢复归档/源码；不手工删除 containerd、kubelet
+或 PVC 数据。旧准备归档及测试镜像标记按精确名称清理，自有端口转发已结束。
+管理员为 newapi_admin，密码只在服务器受保护的 /root/new-api-deploy/operator.env；
+无公开注册或付费上游。分支仍为 deploy/new-api-subpath-20261012，没有上游 push、fork或PR。
+此验收文档可晚于运行源码提交；公开源码始终对应上述实际运行的5b9bbaa提交。</p>
 <h2>验收合同</h2>
 <table>
 <thead><tr><th>验收</th><th>合同</th></tr></thead>
