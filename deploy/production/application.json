@@ -1,0 +1,102 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {"name": "new-api-data", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {"storageClassName": "local-path", "accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "512Mi"}}}
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+      "metadata": {"name": "new-api-ingress", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {
+        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "new-api"}},
+        "policyTypes": ["Ingress"],
+        "ingress": [{
+          "from": [{
+            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "apisix"}},
+            "podSelector": {"matchLabels": {"app.kubernetes.io/instance": "apisix", "app.kubernetes.io/name": "apisix"}}
+          }],
+          "ports": [{"protocol": "TCP", "port": 3000}]
+        }]
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {"name": "new-api", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {
+        "replicas": 1,
+        "strategy": {"type": "Recreate"},
+        "selector": {"matchLabels": {"app.kubernetes.io/name": "new-api"}},
+        "template": {
+          "metadata": {"labels": {"app.kubernetes.io/name": "new-api", "app.kubernetes.io/part-of": "new-api"}},
+          "spec": {
+            "automountServiceAccountToken": false,
+            "hostNetwork": false,
+            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux"},
+            "securityContext": {
+              "runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001,
+              "fsGroup": 10001, "fsGroupChangePolicy": "OnRootMismatch",
+              "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "containers": [{
+              "name": "new-api",
+              "image": "registry.invalid/new-api-subpath:37dcccf85f0579e9da2e565291100e5a8741c90b",
+              "imagePullPolicy": "Always",
+              "workingDir": "/data",
+              "command": ["/bin/sh", "-ec"],
+              "args": ["set +x\numask 077\nfail() { printf 'NEW_API_REQUIRED_CONFIG_INVALID\\n' >&2; exit 1; }\ncase \"${SQL_DSN:-}\" in new_api_app:*'@tcp('*')/new_api?'*) ;; *) fail ;; esac\ncase \"&${SQL_DSN#*\\?}&\" in *'&tls=true&'*) ;; *) fail ;; esac\n[ -n \"${SESSION_SECRET:-}\" ] && [ -n \"${CRYPTO_SECRET:-}\" ] && [ \"$SESSION_SECRET\" != \"$CRYPTO_SECRET\" ] || fail\ncase \"${REDIS_CONN_STRING:-}\" in redis://new_api:*@new-api-redis.new-api.svc.cluster.local:6379/0) ;; *) fail ;; esac\n[ \"${APP_BASE_PATH:-}\" = /new-api ] && [ \"${SSL_CERT_FILE:-}\" = /run/new-api-ca/mysql-ca.pem ] && [ -s \"$SSL_CERT_FILE\" ] || fail\nexec /new-api --port 3000 --log-dir /data/logs"],
+              "securityContext": {
+                "allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true,
+                "capabilities": {"drop": ["ALL"]}
+              },
+              "ports": [{"name": "http", "containerPort": 3000, "protocol": "TCP"}],
+              "env": [
+                {"name": "SQL_DSN", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "SQL_DSN"}}},
+                {"name": "REDIS_CONN_STRING", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "REDIS_CONN_STRING"}}},
+                {"name": "SESSION_SECRET", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "SESSION_SECRET"}}},
+                {"name": "CRYPTO_SECRET", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "CRYPTO_SECRET"}}},
+                {"name": "APP_BASE_PATH", "value": "/new-api"},
+                {"name": "SESSION_COOKIE_SECURE", "value": "true"},
+                {"name": "SESSION_COOKIE_TRUSTED_URL", "value": "https://thedoorofai.com"},
+                {"name": "SSL_CERT_FILE", "value": "/run/new-api-ca/mysql-ca.pem"},
+                {"name": "DEBUG", "value": "false"},
+                {"name": "DIFY_DEBUG", "value": "false"},
+                {"name": "GIN_MODE", "value": "release"},
+                {"name": "ENABLE_PPROF", "value": "false"},
+                {"name": "GENERATE_DEFAULT_TOKEN", "value": "false"},
+                {"name": "TLS_INSECURE_SKIP_VERIFY", "value": "false"},
+                {"name": "SQL_MAX_IDLE_CONNS", "value": "2"},
+                {"name": "SQL_MAX_OPEN_CONNS", "value": "10"},
+                {"name": "LOG_SQL_DSN", "value": ""},
+                {"name": "TMPDIR", "value": "/tmp"}
+              ],
+              "resources": {"requests": {"cpu": "250m", "memory": "256Mi"}, "limits": {"cpu": "1000m", "memory": "1Gi"}},
+              "startupProbe": {"httpGet": {"path": "/api/status", "port": "http"}, "periodSeconds": 10, "timeoutSeconds": 3, "failureThreshold": 60},
+              "readinessProbe": {"httpGet": {"path": "/api/status", "port": "http"}, "periodSeconds": 10, "timeoutSeconds": 3, "failureThreshold": 3},
+              "livenessProbe": {"httpGet": {"path": "/api/status", "port": "http"}, "periodSeconds": 30, "timeoutSeconds": 3, "failureThreshold": 3},
+              "volumeMounts": [
+                {"name": "data", "mountPath": "/data"},
+                {"name": "temporary", "mountPath": "/tmp"},
+                {"name": "mysql-ca", "mountPath": "/run/new-api-ca", "readOnly": true}
+              ]
+            }],
+            "volumes": [
+              {"name": "data", "persistentVolumeClaim": {"claimName": "new-api-data"}},
+              {"name": "temporary", "emptyDir": {"sizeLimit": "256Mi"}},
+              {"name": "mysql-ca", "configMap": {"name": "new-api-mysql-ca", "defaultMode": 292, "items": [{"key": "mysql-ca.pem", "path": "mysql-ca.pem"}]}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1", "kind": "Service",
+      "metadata": {"name": "new-api", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {"type": "ClusterIP", "selector": {"app.kubernetes.io/name": "new-api"}, "ports": [{"name": "http", "port": 3000, "targetPort": "http", "protocol": "TCP"}]}
+    }
+  ]
+}

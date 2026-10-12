@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>New API 独立 MySQL 可行性</title>
+<h1>专用 MySQL 是否能消除共享账号权限阻塞</h1>
+<p>状态：ADOPT。缓存后的同一镜像通过了完整运行阈值：
+非 root、只读根文件系统、deny-all 对外连接、身份校验 TLS、两条限定授权、
+系统表及其他数据库访问拒绝、两次启动和数据保留。首次冷拉取耗时 3 分 17 秒，超过 Job 的
+180 秒截止时间；该首次尝试没有数据库运行结果。缓存后验证使用同一
+摘要及相同资源、权限、网络边界和截止时间；没有增加权限或延长运行预算。
+用户允许但不要求复用 MySQL。现有 RDS 普通账号带有额外全局权限；
+数据库授权 API 无法撤销，现有 DMS 没有已登记的 RDS 管理入口。
+不创建高权限 RDS 账号、不重置既有密码，也不接受跨业务数据可见性作为隐含前提。</p>
+<p>假设：官方 MySQL 8.4.8 Linux amd64 镜像可以在现有受限 namespace 中以非 root、
+只读根文件系统和限定资源运行；数据库专用普通账号仅拥有新数据库权限，TLS 校验
+服务器身份，重启后保留数据。若成立，专用实例是共享 RDS 的隔离替代，而不是 SQLite 回退。</p>
+<p>固定镜像：<code>mysql:8.4.8@sha256:4fc4bca5a26c5aa2246a92779d238bc2d34f0373e65dc083d7b635b02780dd3d</code>。
+环境：<code>kubernetes-admin@cluster.local</code>、<code>new-api</code>；
+节点可分配 3.6 CPU、约 13.5 GiB 内存，当前磁盘可用 7.4 GiB。</p>
+<p>证明仅使用一个有截止时间的 Job、唯一标签的 deny-all 网络策略、临时磁盘和合成 TLS
+证书。没有 Service、公网入口、真实凭据、共享 RDS 访问或既有应用变更。
+运行限制：1.5 GiB 内存、1 CPU，临时数据最多 1 GiB；总时间预算 10 分钟，
+单次 Job 180 秒。镜像拉取失败、调度/内存/初始化失败或权限不满足时停止，不扩大权限重试。</p>
+<p>成功阈值：两次启动都成功；账号授权只有全局 USAGE 和专用数据库权限、无 GRANT OPTION；
+读取 mysql.user 与创建另一个数据库被拒绝；客户端 VERIFY_IDENTITY 连接具有非空 TLS 密码套件；
+写入的合成行在进程重启后仍存在；没有未经预期的对外连接。此证明不等于应用迁移、
+完整登录流程、生产 PVC 持久性或恢复能力验证。</p>
+<p>清理：删除唯一 Job，等待 Pod 删除，再删除对应网络策略、合成证书 Secret和明确命名的
+证书暂存文件。保留 namespace、源码和非敏感结果。只有证明通过并更新主设计后，才准备正式
+MySQL 部署；原 RDS 数据库和账号保留，不能自动删除或改动其他实例。</p>
+<p>实际结果：<code>NEW_API_MYSQL_ISOLATION_TLS_RESTART_PASSED</code>；
+Job、策略、合成证书 Secret和证书暂存目录已清理。源码和驱动保留在会话证据目录
+<code>files/new-api-deployment/mysql-isolation-proof.py</code> 与
+<code>run-mysql-proof.sh</code>，不进入正式运行镜像。</p>
+<p>采纳边界：使用 New API 专属 MySQL，不再要求共享 RDS 管理访问或接受其额外权限。
+正式实现仍须具备持久卷、固定独立凭据、仅应用可访问的数据库网络策略、私有初始化、
+实际 Go 迁移及完整认证/重启验证。单节点 local-path 不是高可用或容量预留；
+删除 PVC 可能删除数据，增长必须受剩余磁盘监控约束。</p>
+</html>

@@ -1,0 +1,95 @@
+{
+  "apiVersion": "v1", "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1", "kind": "PersistentVolumeClaim",
+      "metadata": {"name": "new-api-mysql-data", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {"storageClassName": "local-path", "accessModes": ["ReadWriteOnce"], "resources": {"requests": {"storage": "1Gi"}}}
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+      "metadata": {"name": "new-api-mysql-ingress", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {
+        "podSelector": {"matchLabels": {"app.kubernetes.io/name": "new-api-mysql"}},
+        "policyTypes": ["Ingress"],
+        "ingress": [{
+          "from": [{
+            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "new-api"}},
+            "podSelector": {"matchLabels": {"app.kubernetes.io/name": "new-api"}}
+          }],
+          "ports": [{"protocol": "TCP", "port": 3306}]
+        }]
+      }
+    },
+    {
+      "apiVersion": "apps/v1", "kind": "Deployment",
+      "metadata": {"name": "new-api-mysql", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {
+        "replicas": 1, "strategy": {"type": "Recreate"},
+        "selector": {"matchLabels": {"app.kubernetes.io/name": "new-api-mysql"}},
+        "template": {
+          "metadata": {"labels": {"app.kubernetes.io/name": "new-api-mysql", "app.kubernetes.io/part-of": "new-api"}},
+          "spec": {
+            "automountServiceAccountToken": false, "hostNetwork": false,
+            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux"},
+            "securityContext": {
+              "runAsNonRoot": true, "runAsUser": 999, "runAsGroup": 999,
+              "fsGroup": 999, "fsGroupChangePolicy": "OnRootMismatch",
+              "seccompProfile": {"type": "RuntimeDefault"}
+            },
+            "containers": [{
+              "name": "mysql",
+              "image": "mysql:8.4.8@sha256:4fc4bca5a26c5aa2246a92779d238bc2d34f0373e65dc083d7b635b02780dd3d",
+              "imagePullPolicy": "IfNotPresent",
+              "args": [
+                "mysqld", "--datadir=/var/lib/mysql",
+                "--socket=/var/run/mysqld/mysqld.sock", "--pid-file=/var/run/mysqld/mysqld.pid",
+                "--tmpdir=/tmp", "--secure-file-priv=NULL",
+                "--skip-log-bin", "--mysqlx=OFF", "--performance-schema=OFF",
+                "--innodb-buffer-pool-size=128M", "--innodb-redo-log-capacity=64M",
+                "--max-connections=30", "--general-log=OFF", "--slow-query-log=OFF",
+                "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci",
+                "--ssl-ca=/run/mysql-auth/ca.pem", "--ssl-cert=/run/mysql-auth/server.pem",
+                "--ssl-key=/run/mysql-auth/server-key.pem", "--require-secure-transport=ON"
+              ],
+              "env": [
+                {"name": "MYSQL_DATABASE", "value": "new_api"},
+                {"name": "MYSQL_USER", "value": "new_api_app"},
+                {"name": "MYSQL_ROOT_HOST", "value": "localhost"},
+                {"name": "MYSQL_ROOT_PASSWORD_FILE", "value": "/run/mysql-auth/root-password"},
+                {"name": "MYSQL_PASSWORD_FILE", "value": "/run/mysql-auth/app-password"},
+                {"name": "MYSQL_INITDB_SKIP_TZINFO", "value": "1"}
+              ],
+              "securityContext": {"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": {"drop": ["ALL"]}},
+              "resources": {"requests": {"cpu": "250m", "memory": "512Mi"}, "limits": {"cpu": "1000m", "memory": "1536Mi"}},
+              "ports": [{"name": "mysql", "containerPort": 3306, "protocol": "TCP"}],
+              "startupProbe": {"tcpSocket": {"port": "mysql"}, "periodSeconds": 10, "timeoutSeconds": 3, "failureThreshold": 60},
+              "readinessProbe": {"tcpSocket": {"port": "mysql"}, "periodSeconds": 10, "timeoutSeconds": 3, "failureThreshold": 3},
+              "livenessProbe": {
+                "exec": {"command": ["/bin/sh", "-ec", "mysqladmin --protocol=socket --socket=/var/run/mysqld/mysqld.sock ping --silent >/dev/null 2>&1"]},
+                "periodSeconds": 30, "timeoutSeconds": 3, "failureThreshold": 3
+              },
+              "volumeMounts": [
+                {"name": "data", "mountPath": "/var/lib/mysql"},
+                {"name": "temporary", "mountPath": "/tmp"},
+                {"name": "socket", "mountPath": "/var/run/mysqld"},
+                {"name": "auth", "mountPath": "/run/mysql-auth", "readOnly": true}
+              ]
+            }],
+            "volumes": [
+              {"name": "data", "persistentVolumeClaim": {"claimName": "new-api-mysql-data"}},
+              {"name": "temporary", "emptyDir": {"sizeLimit": "64Mi"}},
+              {"name": "socket", "emptyDir": {"sizeLimit": "8Mi"}},
+              {"name": "auth", "secret": {"secretName": "new-api-mysql-auth", "defaultMode": 288}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "apiVersion": "v1", "kind": "Service",
+      "metadata": {"name": "new-api-mysql", "namespace": "new-api", "labels": {"app.kubernetes.io/part-of": "new-api"}},
+      "spec": {"type": "ClusterIP", "selector": {"app.kubernetes.io/name": "new-api-mysql"}, "ports": [{"name": "mysql", "port": 3306, "targetPort": "mysql", "protocol": "TCP"}]}
+    }
+  ]
+}
