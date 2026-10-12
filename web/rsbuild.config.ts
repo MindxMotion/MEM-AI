@@ -32,7 +32,7 @@ export default defineConfig(({ envMode }) => {
   // boundaries, never shell assets or HMR; the upstream receives root paths.
   const devProxy = [
     {
-      context: (pathname: string) => {
+      pathFilter: (pathname: string) => {
         const unmounted = basePath ? pathname.slice(basePath.length) : pathname
         if (basePath && !pathname.startsWith(`${basePath}/`)) return false
         return (

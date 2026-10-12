@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><title>New API subpath contract</title>
 <h1>New API at /new-api/</h1>
-<p>Status: source implementation present; runtime acceptance incomplete. The independently reviewed contract starts at baseline 42e694eb60fe3191795c00d416571ced716eb9c4, branch deploy/new-api-subpath-20261012. Deployment: BLOCKED. The requested same-origin mount is the chosen direction, not browser security isolation. Parent owns ingress, credentials, databases and rollout. No billing, schema, wire-protocol metadata or backend route-group changes.</p>
+<p>Status: publicly live at source 0fd5350a371d54cb554eab17be00f7c7f4c36ac1; full transport acceptance remains incomplete. The independently reviewed contract starts at baseline 42e694eb60fe3191795c00d416571ced716eb9c4, branch deploy/new-api-subpath-20261012. The requested same-origin mount is the chosen direction, not browser security isolation. Parent owns ingress, credentials, databases and rollout. No billing, wire-protocol metadata or backend route-group changes; the independent database received the upstream application's initial schema.</p>
 <p>UX: N/A as a separate packet: retain existing journeys, authorization, retry/cancel behavior and router destinations; only public URL resolution changes. UI reference: N/A: retain existing components, themes and responsive layout; the corresponding-source link reuses attribution markup, localization and keyboard/link semantics. Separate test design: N/A: the criterion-to-test map below is sufficient using current test conventions and the existing browser fixture. This means extending tests, not that existing tests already prove mounting. No streaming, callback, cookie or browser acceptance is waived.</p>
 <h2>Contract</h2>
 <ul>
@@ -39,7 +39,7 @@
 <tr><td>web/src/lib/oauth.ts; features/auth/hooks/use-oauth-login.ts; features/auth/lib/oauth.ts re-export; features/system-settings/auth/oauth-callback-url.ts and its oauth-section/custom-oauth callers</td><td>Browser-owned Discord/OIDC/custom authorization redirect_uri is origin + mounted callback path. Settings callback displays use configured ServerAddress without duplicating P. GitHub/LinuxDO provider allowlists and backend oauth/discord.go, oidc.go, generic.go and telegram.go already derive/expect callbacks from ServerAddress; parent sets the no-trailing-slash full site address and matching allowlists. Preserve postMessage origin/source/state in oauth-popup.ts and routes/oauth/$provider.tsx, sanitizeAuthRedirect and its sign-in/OTP/WeChat callers, and WebAuthn origin/RP logic. Native router strips/adds P for internal hrefs; no sanitizer or legacy-route.ts rewrite. Unreferenced TelegramBindDialog/old callback_url transport is not a reason to resurrect removed widget routes.</td></tr>
 <tr><td>web/src/features/dashboard/components/overview/overview-dashboard.tsx; features/pricing/components/model-details-api.tsx; features/keys/components/api-keys-primary-buttons.tsx, data-table-row-actions.tsx, dialogs/cc-switch-dialog.tsx; features/chat/hooks/use-chat-presets.ts, lib/send-to-fluent.ts; features/wallet/lib/affiliate.ts</td><td>Replace each origin-only fallback with public-site base; affiliate joins the mounted sign-up path. Keep explicit api_info/server_address values and chat template/custom-protocol destinations unchanged. chat-links.ts, layout chat-presets-item.tsx and authenticated chat/chat2link routes consume that resolved address, not another prefix. Do not change endpoint metadata in models/constants.ts or task-plugins/lib/host-protocols.ts. Backend service/task_artifact_access.go already preserves a configured base path; TaskPublicAddress overrides remain parent-owned.</td></tr>
 <tr><td>common/session_cookie.go and its existing InitSessionCookieSettings caller in common/init.go; service/auth_session.go</td><td>Validate APP_BASE_PATH even in insecure local mode, before the current early return. Derive refresh path P + /api/user/auth and hint path P + /, and use identical settings at each of the four http.SetCookie issuance/deletion sites. Keep cookie names, Domain absence, HttpOnly true/false distinction, Secure, SameSiteStrict, expiry and MaxAge behavior. Do not add gin sessions, request-header-derived prefixes, a new auth mechanism or edits to billing/route groups. Prefix changes between releases require re-login; no deletion of another application's root cookies.</td></tr>
-<tr><td>Dockerfile; web/src/components/layout/components/footer.tsx ProjectAttribution; parent ingress/source publishing</td><td>Add empty-default ARG VITE_APP_BASE_PATH and ARG VITE_CORRESPONDING_SOURCE_URL in frontend builder and pass them to the existing build; retain locked tool/image pins and license copies. Source-link input is optional for local builds; if present it must be a single-slash local archive path beneath the mounted /source/ directory, without scheme, query, fragment or traversal. Render its localized source anchor alongside, never instead of, upstream attribution in both footer branches. Parent supplies an immutable first-party archive URL and serves that file at the edge; it is not a new Go route. A production modified image without a working corresponding-source offer cannot roll out.</td></tr>
+<tr><td>Dockerfile; web/src/components/layout/components/footer.tsx ProjectAttribution; parent ingress/source publishing</td><td>Add empty-default ARG VITE_APP_BASE_PATH and ARG VITE_CORRESPONDING_SOURCE_URL in frontend builder and pass them to the existing build; retain locked tool/image pins and license copies. Source-link input is optional for local builds; if present it must be a single-slash local archive path beneath the mounted /source/ directory or the explicit mounted /source.tar.gz endpoint, without scheme, query, fragment or traversal. Render its localized source anchor alongside, never instead of, upstream attribution in both footer branches. Parent supplies an exact committed first-party archive and verifies its SHA-256 against the live download; existing embedded static serving owns the endpoint, not a new Go route. A production modified image without a working corresponding-source offer cannot roll out.</td></tr>
 </tbody>
 </table>
 <p>Explicit exclusions read at their callers: system-update/api.ts GitHub release fetch, task-plugins marketplace index/changelog/logo downloads, oauth-section.tsx OIDC discovery, ai-elements/prompt-input.tsx blob attachment fetches, provider/payment checkout destinations and passkey-section.tsx currentOrigin. No global fetch, HTML, storage-key or URL rewrite. controller/service return_path.go and task_artifact_access.go already preserve ServerAddress paths; backend OAuth token exchange likewise consumes that full base. middleware/auth_origin.go still validates origins without paths; SESSION_COOKIE_TRUSTED_URL remains https://thedoorofai.com and WebAuthn RP remains a hostname. The same-origin storage/JavaScript limitation is unchanged.</p>
@@ -108,6 +108,95 @@ cases passed process-interruption recovery, exact-byte retention, concurrency an
 invalid-link/mode/owner boundaries. Nine affected controller authentication/OAuth/
 origin cases passed in a credential-free Linux Job; a broader selector timed out
 at 100 seconds and is not passing-suite evidence. Actual deployment remains pending.</p>
+<h2>Live and development evidence · 2026-10-12</h2>
+<p>The public service uses dedicated MySQL and Redis. Private initialization, disabled
+registration, 38-table MySQL migration, CA/hostname-verified TLS and ordinary-account
+system-table denial passed. App, MySQL and Redis cold restarts retained credentials,
+administrator and options. Real HTTPS Edge login, renewal, authenticated reload,
+legacy console navigation and UI logout passed with 129 owned requests, zero path
+escapes and zero page errors. The live source archive SHA-256 is
+341bf5fc92b65de020c7f0fc7ca4ad036656f9cbaf571186f7837f79255b4592.
+Bare GET/HEAD 308, query preservation, boundary exclusion and scoped canonical
+Location rewriting passed. Earlier paragraphs describe historical preparation,
+not the current production state.</p>
+<p>Development acceptance exposed an ignored proxy option: installed Rsbuild 2 uses
+http-proxy-middleware 3, whose array entries require pathFilter rather than context.
+The old option proxied frontend navigation and HMR to the backend. The owner now
+uses the native pathFilter; two root/prefix regressions failed before and passed
+after correction. Actual Edge observed /new-api/rsbuild-hmr and root /rsbuild-hmr
+frames, new connections after reload and native API proxy forwarding, with no
+page errors. Strict types and touched-file
+lint/format pass. This development-only correction is not included in the live
+0fd5350 image; the deployed image's production asset configuration is unchanged.
+Actual HTTP stream and authorized relay WebSocket evidence is recorded below;
+no paid provider or real OAuth provider is configured.</p>
+<p>Fresh production dependency audit failed with 25 inherited advisories: one
+critical, nine high, eleven moderate and four low. This is an open release gate,
+not a waiver or evidence that each advisory is exploitable in the browser.
+The bounded remediation updates only affected package resolutions and checks
+authentication, routing, rendered content, strict types and production builds.
+It must retain legal notices and reduce the fresh production audit to only the
+explicitly authorized exception below before the replacement image is deployed.
+UX/UI and separate test-design remain N/A:
+no user journey, wire DTO, persistence or authentication policy is changed.</p>
+<p>AC2 live transport: real HTTPS authenticated playground SSE completed through
+stop, [DONE] and EOF; native HTTP rejection and an error after streaming began
+propagated. Client socket abort produced an independently observed upstream
+disconnect within eight seconds. Actual Ollama NDJSON reached the mounted admin
+SSE endpoint. Both realtime and responses relay WebSockets passed authorized 101,
+upstream event exchange and normal 1000 close; unauthenticated 401 was checked
+separately. A second real root-mode backend passed the same criteria. That run
+used explicit disposable SQLite, independent synthetic credentials, no Redis,
+bounded emptyDir volumes and a loopback-only port-forward; it did not change
+the authoritative production MySQL, route or credentials and does not prove a
+root frontend from the prefix-built image. Root frontend builds/browser evidence
+remain separate. Fixture channels/tokens and each owned login were removed or
+revoked; both root/mock Jobs, Services, policies and synthetic credential staging
+were removed. No paid request was sent.</p>
+<p>The proof corrected two test assumptions, not runtime code: the token-key API
+returns storage-form keys without the client-facing sk- prefix, and channel
+creation waits for the native 60-second memory-cache refresh. The bounded runner
+normalizes the key once and retries only model_not_found during that interval.
+It does not restart the application, disable cache, bypass authorization or
+claim a failed attempt as passing evidence.</p>
+<p>WVR-01 · explicit user decision, 2026-10-12: retain node-forge 1.4.0 and existing
+browser compatibility for this test service, accepting only
+<a href="https://github.com/advisories/GHSA-86w9-cpqp-85rv">GHSA-86w9-cpqp-85rv</a>.
+No patched version is published. The advisory concerns RSA PKCS#1 v1.5 signature
+verification; the password owner uses RSA-OAEP/SHA-256 and the AES-GCM envelope.
+The exception requires source confirmation that the affected verifier is not used.
+Reopen it when upstream publishes a fix or the project introduces signature
+verification. It does not waive another advisory, authentication failure or type/
+build gate. Report the remaining audit finding and nonzero audit exit honestly,
+not as a clean audit or blanket security approval.</p>
+<p>Follow-up review scope: the dev proxy option and its root/prefix regression.
+Correctness: native pathFilter applies the intended family boundary before one
+prefix strip; assets, navigation and HMR stay local. Necessity: one installed
+native option replaces an ignored option; no new helper, dependency, interface or
+global transport rewrite is needed. No actionable correctness or necessity finding
+in this slice. Dependency updates and their compatibility adaptations still need
+their own completed review and fresh release verification.</p>
+<p>Dependency remediation · 2026-10-12: resolved axios 1.20.0, colord 2.9.4,
+decode-uri-component 0.5.0, DOMPurify 3.4.16, KaTeX 0.18.2, Mermaid 11.16.1
+and seroval 1.6.3. Only decode and KaTeX require new overrides because their
+parents' old ranges exclude the fixes. The actual query-string, router serializer,
+micromark/rehype math and Markdown consumers passed compatibility vectors.
+The 15-file focused selection passed 147 tests; selections from earlier runs
+overlap and are not added together. Strict types, affected lint/format and the
+prefix production build passed, retaining 39 extracted license files.
+The audit exits 1 with exactly one HIGH, WVR-01, not zero findings.</p>
+<p>Review of the complete dependency delta found no actionable correctness or
+necessity issue. Axios's stricter parameter types require only the existing
+channelActionConfig helper at getChannelOps and explicit request-config types
+in four mocks; URL, parameters, error policy and response semantics remain
+unchanged. No cipher or Forge lock entry changed. The sole Forge runtime import
+is password-encryption.ts:144, reached by login and password identity verification;
+it uses key parsing, randomness, SHA-256, OAEP encryption and AES-GCM, not
+the library's affected key.verify branch. The verifier still ships, so the
+authorized exception remains explicit. Decode malformed-input equivalence is
+bounded to tested vectors; pixel-level math parity is not claimed. Release
+verification must install the frozen lock in a clean checkout rather than rely
+on the earlier corrected, previously stale nested KaTeX directories.</p>
 <h2>Security references</h2>
 <p>Read OWASP ASVS 5.0.0 release V7 Session Management and V10 OAuth/OIDC; cookie controls reside in V3. Authentication and Session Management Cheat Sheets retrieved from OWASP/CheatSheetSeries because direct OWASP fetch was blocked. Applicable controls include server-side session verification, rotation and invalidation, exact OAuth callback/origin checks, secure cookie transport, narrowly scoped cookie path, and credential-free evidence. No blanket ASVS compliance claim.</p>
 <p><a href="poc.html">Bounded proof</a></p>
