@@ -3,10 +3,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>New API independent deployment</title>
+<style>
+  :root{color-scheme:light dark}
+  body{max-width:1100px;margin:24px auto;padding:0 16px;font:16px/1.65 system-ui,sans-serif;overflow-wrap:anywhere}
+  pre{white-space:pre-wrap}code{overflow-wrap:anywhere}
+  table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}
+  th,td{padding:8px;text-align:left;vertical-align:top;border:1px solid #888}
+</style>
 <body>
 <h1>New API 独立上线</h1>
 <p>在现有集群单独部署 New API，入口为 <code>https://thedoorofai.com/new-api/</code>。采用独立 MySQL 与独立 Redis；不接入 MindMotion 的用户、积分、凭据或业务数据。用户允许但不要求共享基础设施，专用 MySQL 可行性已采纳；RDS 资源和凭据保留但不使用。</p>
-<h2>当前运行状态 · 2026-10-12</h2>
+<h2>当前运行状态 · 2026-10-15 · 上游余额</h2>
+<p>VERIFIED：运行源码 <code>91ce88174831b48748e90f7075739e6544276983</code>；
+公开源码分支 <code>MindxMotion/new-api:mindxmotion</code>。应用 manifest 为
+<code>sha256:18e9788efbb0e9e5fe647fc06b9cf329b05088969ee4189d265cd8fa44125848</code>，
+config 为 <code>sha256:1505292c3fc8479ee0835169d71aa77ebd40cce35bbb73739a78ae8217c65aef</code>；
+交付归档 SHA-256 <code>1ba15aae344d65855459fdd632e467d501302d071a43625ce4ad72df7ff18ea8</code>，
+对应源码 SHA-256 <code>fa10e18fcf6eba5144174a24b34980dbf004d3356052cd71d94cf84dad6392f6</code>。
+本验收文档提交晚于运行源码；镜像和公开源码下载仍精确对应上述应用提交。</p>
+<p>只替换 new-api namespace 的 Deployment/new-api 镜像并加入私有余额来源配置，
+保留 kubernetes-admin@cluster.local、node1/linux/amd64、Never、两个 PVC 及 immutable Secret。
+未更改 MySQL/Redis 工作负载、固定凭据、路由或数据库 schema。实际 Pod
+<code>new-api-77c9674df6-5hkrm</code> Ready；containerd imageID 的 repository alias 与应用名不同，
+但实际 manifest digest 完全一致。原校验器的 alias 误判经只读检查修正，无二次 apply 或 rollback。
+New API/MindMotion health 均200，旧 /api 仍404。</p>
+<p>两个已有模型渠道已通过标准管理 API 启用相同的通用余额 profile；真实 total/used/remaining、
+单位/范围/时间、冷却缓存和共享账户去重通过，不把渠道余额相加。现有密钥、渠道状态与本地账目、
+用户 Test 令牌 ID6、模型价格以及全局/首页选项逐项保持。真实浏览器的明暗375/1280px、
+两个渠道读/刷新、余额文字与 API 一致、条形几何、焦点、无横向溢出、登录/续期/重载/退出、
+对应源码散列及零前缀逃逸通过；没有付费推理。截图仅留会话私有存储，未公开金额或凭据。</p>
+<p>干净精确检出的冻结依赖、严格类型、前缀构建、Linux Go/PGO、POSIX许可层和完整离线镜像校验通过。
+前端全量2264项通过；三种真实隔离数据库的 settings TEXT 回写与重复迁移通过。Windows
+文件锁/平台测试另在 Linux 验证，未掩盖初始失败；全仓 lint 仍有既有范围外问题，非零公告审计
+仅为已接受 WVR-01。详细验收见
+<a href="../../docs/design/channels/upstream-account-balance/design.html">余额功能 r4</a>。
+临时数据库、测试二进制/源码、浏览器 SSH 通道和自有会话均已清理；
+保留本次归档及5b9bbaa兼容恢复归档，不删除 PVC/containerd 数据。</p>
+<h2>历史运行记录 · 2026-10-12</h2>
 <p>VERIFIED：已公开上线并完成本次发布验收。运行源码为
 <code>5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>，应用 manifest 摘要为
 <code>sha256:2262d309ec44eacdf845a282b5bfb8978dc7c2d4c18e538320d4f7bcacdd9de7</code>。
