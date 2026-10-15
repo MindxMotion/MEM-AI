@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Upstream account balance — technical design</title>
+  <style>
+    :root{color-scheme:light dark}
+    body{max-width:1100px;margin:32px auto;padding:0 20px;font:16px/1.65 system-ui,sans-serif}
+    h1,h2,h3{line-height:1.25}h2{margin-top:2rem}
+    a{color:light-dark(#155cb4,#95c4ff)}code{overflow-wrap:anywhere}
+    table{border-collapse:collapse;width:100%;margin:16px 0}
+    th,td{border:1px solid light-dark(#ccd2db,#505863);padding:10px;text-align:left;vertical-align:top}
+    .status{padding:14px;border-left:4px solid #548bbd;background:light-dark(#edf4fa,#172b3d)}
+    .scroll{overflow-x:auto}small{font-size:.88rem}pre{white-space:pre-wrap;overflow-wrap:anywhere}
+    @media(max-width:600px){body{padding:0 14px;margin:20px auto}th,td{min-width:135px}}
+    @media print{body{max-width:none;margin:0;color:#111;background:#fff}.scroll{overflow:visible}a{color:#111}}
+  </style>
+</head>
+<body>
+<main>
+<h1>Upstream account balance</h1>
+<p class="status"><strong>r3 · Technical direction READY · 2026-10-14.</strong>
+User-authorized implementation in progress; UX/UI/test contracts below are READY.
+No credential queries, publication or deployment are authorized in this scope.
+Release readiness depends on fresh verification and parent review.</p>
+<p>Show administrators a truthful account-level quota snapshot beside channel operations.
+Reuse the existing balance owner, channel settings and Base UI components. Select a generic billing profile
+independently of inference channel type; supplier identity, target origins and credentials are never source constants.</p>
+
+<h2 id="evidence">1. Current source and capability gap</h2>
+<p>Source baseline: <code>deploy/new-api-subpath-20261012</code>, HEAD <code>8d5abf8b0</code>;
+deployed-code record <code>5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>.
+The 31 upstream commits beyond the shared baseline are not merged or assumed here.
+The unrelated private-deployment packet and concurrent branding/admin-settings work remain untouched.</p>
+<div class="scroll"><table>
+<thead><tr><th>Owner / source</th><th>Observed behavior</th><th>Design consequence</th></tr></thead>
+<tbody>
+<tr><td><a href="../../../../controller/channel-billing.go">controller/channel-billing.go</a>
+<small> · updateStandardChannelBalance; fetchAdvancedCustomBalance; updateAllChannelsBalance</small></td>
+<td>OpenAI/custom channel types fetch subscription and usage, subtract cents/100, and persist only remaining USD.
+Other types dispatch separately; an inference protocol does not imply billing compatibility.
+Advanced custom supports a balance route, recognizes credit_summary.total_available, otherwise returns raw JSON.
+Bulk balance refresh can disable channels at balance ≤ 0.</td>
+<td>Add an opt-in normalized snapshot path in this owner; do not couple visualization to inference type
+or inherit automatic disabling. Keep unconfigured legacy behavior.</td></tr>
+<tr><td><a href="../../../../controller/billing.go">controller/billing.go</a>;
+<a href="../../../../router/dashboard.go">router/dashboard.go</a></td>
+<td>The fork serves both legacy dashboard path variants. Its hard_limit_usd may actually represent
+site display units; total_usage is 100 times those units. It ignores date queries and may represent token scope.</td>
+<td>Call this a legacy compatibility profile, not a universal OpenAI billing standard.
+Units, scope and period must be declared; never infer USD, lifetime allowance or unlimited status from field names alone.</td></tr>
+<tr><td><a href="../../../../router/channel-router.go">router/channel-router.go</a>;
+<a href="../../../../service/authz/resources_channel.go">service/authz/resources_channel.go</a>;
+<a href="../../../../controller/channel.go">controller/channel.go</a></td>
+<td>AdminAuth plus Casbin channel.read / channel.operate guard existing read/refresh operations.
+Key retrieval separately requires RootAuth and secure verification; updates check sensitive changes.</td>
+<td>Use the same permission model. Destination/profile changes must also count as sensitive changes.
+Do not call key retrieval from the browser.</td></tr>
+<tr><td><a href="../../../../model/channel.go">model/channel.go</a>;
+<a href="../../../../relaykit/dto/channel_settings.go">relaykit/dto/channel_settings.go</a></td>
+<td>Channel.settings stores typed OtherSettings JSON; balance is USD and used_quota is local consumption.
+GetOtherSettings currently repairs malformed JSON by writing to the database.</td>
+<td>Reuse the settings column, preserve unrelated keys, and validate writes.
+Snapshot reads must decode without invoking the write-on-error getter.</td></tr>
+<tr><td><a href="../../../../service/http_client.go">service/http_client.go</a>;
+<a href="../../../../service/protected_fetch_client.go">service/protected_fetch_client.go</a>;
+<a href="../../../../common/ssrf_protection.go">common/ssrf_protection.go</a></td>
+<td>Relay clients permit operator-managed private targets. Protected fetch has resolved-IP validation and direct
+IP dialing, but protection can be disabled, proxies bypass the protected dialer, and TLS bypass is configurable.</td>
+<td>Reuse protected transport mechanics with a dedicated fail-closed policy; the existing getter alone is insufficient.</td></tr>
+<tr><td><a href="../../../../web/src/features/channels/components/dialogs/balance-query-dialog.tsx">balance-query-dialog.tsx</a>;
+<a href="../../../../web/src/features/channels/components/channels-columns.tsx">channels-columns.tsx</a>;
+<a href="../../../../web/src/features/channels/components/channel-card.tsx">channel-card.tsx</a></td>
+<td>Current dialog displays remaining balance or raw JSON. Table/card pairs local used_quota with upstream
+remaining; there is no valid upstream denominator or total/used snapshot. Codex/inference status has separate behavior.</td>
+<td>Reuse dialog and responsive card/table integration, but never derive an upstream percentage from local used_quota.
+Preserve existing special channel views.</td></tr>
+<tr><td><a href="../../../../web/src/features/channels/lib/channel-form.ts">channel-form.ts</a>;
+<a href="../../../../web/src/features/channels/components/drawers/channel-configuration.tsx">channel-configuration.tsx</a>;
+<a href="../../../../web/src/components/ui/progress.tsx">ui/progress.tsx</a>;
+<a href="../../../../web/src/lib/currency.ts">lib/currency.ts</a></td>
+<td>Form/settings round-trip, configuration sections, Base UI progress and currency formatting already exist.
+The currency helpers can convert USD into site display units, including tokens; Visactor is installed.</td>
+<td>Extend Other Settings and existing dialog. A labeled used/remaining progress bar needs no new chart dependency.
+Upstream units must remain authoritative, not silently adopt local recharge/token conversion.</td></tr>
+</tbody></table></div>
+<p>A separate application's public balance implementation corroborates the subscription/usage numeric shape
+and the /100 usage scale, but not this deployment's current response, currency, scope or period.
+No live upstream compatibility test was performed for this design; implementation fixtures must not claim otherwise.</p>
+
+<h2 id="decisions">2. Decisions and smallest slice</h2>
+<dl>
+<dt><strong>DEC-001 — Extend existing ownership, not a supplier adapter or plugin framework.</strong></dt>
+<dd>Use channel-billing.go for profile selection and normalization, existing service transport for network safety,
+and the channels feature for presentation. Add typed opt-in <code>upstream_balance</code> under ChannelOtherSettings.
+It works for single-key OpenAI and Anthropic inference channels without changing their types.
+Reject a provider-name switch, copied external application store, scripts and new balance microservice.</dd>
+<dt><strong>DEC-002 — Legacy subscription/usage first; relative endpoint overrides included.</strong></dt>
+<dd>The selected profile reads hard_limit_usd and total_usage, with usage scale 0.01.
+Defaults are <code>/v1/dashboard/billing/subscription</code> and <code>/v1/dashboard/billing/usage</code>.
+Administrators may configure alternative root-relative paths, currency/unit and declared account/key scope.
+The first slice uses cumulative usage without date query parameters and requires a matching cumulative total;
+monthly/rolling budget semantics are unsupported rather than mixed.
+All amounts in a pair must describe the same scope, period and unit.</dd>
+<dt><strong>DEC-003 — No speculative arbitrary JSON mapper.</strong></dt>
+<dd>Existing advanced-custom route configuration covers endpoint routing, but its converter/raw-response behavior
+does not establish a normalized quota contract. Leave that legacy feature intact.
+If a redacted response proves a different numeric shape is required, reopen this design for one GET response
+with bounded object-key/index paths, fixed decimal scales and explicit unit/scope; no JSONPath evaluation,
+expressions, scripts, request bodies or custom secret headers. Endpoint overrides already satisfy nonstandard
+paths with the supported response shape; different shapes fail explicitly.</dd>
+<dt><strong>DEC-004 — Informational account snapshot, not gateway accounting.</strong></dt>
+<dd>Cache normalized snapshots in bounded process memory, not channel.settings or a new table.
+Do not write Channel.Balance, local UsedQuota, user credits, pricing, token quota or channel status.
+Do not feed this path into the legacy bulk auto-disable loop. Configured rows show the new upstream snapshot
+separately from labeled local consumption; unconfigured rows retain legacy balance behavior.
+Reject a chart built from local usage plus upstream remaining and reject persistent history in this slice.</dd>
+<dt><strong>DEC-005 — Display each shared account once when summarized.</strong></dt>
+<dd>For identical origin, credential and effective profile configuration, deduplicate fetches and snapshot identity
+server-side. Two model/protocol channels can show the same account snapshot with a “shared account” label.
+Do not sum their totals. Do not treat channel tags, model names or matching origins alone as account identity.
+This slice has no cross-account grand total or history dashboard.</dd>
+</dl>
+
+<h2 id="contracts">3. Caller-visible contracts and trust boundary</h2>
+<h3>Configuration and authorization</h3>
+<p><code>UPSTREAM_BALANCE_ORIGINS</code> is a server-only environment map from neutral aliases to exact HTTPS origins,
+for example <code>{"primary":"https://example.com"}</code>. Missing configuration disables the new outbound capability;
+malformed configured values fail startup. Origins have no path, userinfo, query or fragment.
+The channel form selects an alias and profile and sets optional endpoint paths plus unit/scope confirmation.
+Real targets stay in deployment configuration; never put them in defaults, public fixtures, docs or VITE variables.</p>
+<p>The same saved channel key supplies server-side Bearer authentication, even for an Anthropic inference channel.
+No second key field, query authentication, credential interpolation or header override is allowed in this profile.
+Multi-key and task-plugin channels return unsupported. New settings preserve omitted/unknown unrelated JSON fields;
+masked or empty key form values must not replace the saved key.
+Changing billing destination, paths, profile, unit or scope requires channel.sensitive_write;
+ordinary unchanged settings resubmission must remain available to channel.write administrators.</p>
+<p>Proposed <code>GET /api/channel/:id/upstream_balance</code> reads a cached normalized snapshot only,
+under AdminAuth + channel.read.
+Proposed <code>POST /api/channel/:id/upstream_balance/refresh</code> performs a bounded query under
+AdminAuth + channel.operate, existing critical rate limiting and trusted-origin/session protections.
+Declare personal-access-token permission scopes through the existing permission-route helper.
+No ordinary-user, public status, wallet or model-list endpoint includes these amounts or metadata.
+Browser requests use the shared Axios client so the existing /new-api/ mount is applied exactly once.</p>
+<h3>Outbound transport and response normalization</h3>
+<p>Resolve aliases on the server; accept only root-relative, non-network-path endpoint paths with no query,
+fragment, backslash, percent-encoded traversal or dot segments. Combine them with the selected exact origin;
+never with browser input or an inference URL suffix. Reject redirects rather than forward authorization.
+Use certificate verification and direct protected dialing, with private/reserved IPv4/IPv6 rejected for every
+resolved address and the validated address pinned at connection time. Do not inherit channel/global proxies,
+TLS-insecure flags, arbitrary Host/header overrides or globally disabled SSRF protection.
+Reuse service protected-fetch mechanics with policy injection; do not retrofit all inference clients.</p>
+<p>A single cancellation/deadline covers both GET requests, DNS, headers and body reads.
+Cap each decoded body at the existing advanced-balance 256 KiB ceiling, including compressed responses;
+bound JSON depth, and close bodies on success/failure. HTTP failure, error objects, missing fields,
+wrong numeric types, non-finite/unrepresentable values or mismatched semantics are failures, never zero.
+Accept finite nonnegative total and used; derive remaining = total − used, including a negative overdrawn value.
+Use existing decimal arithmetic for normalization; expose finite bounded numbers with explicit unit precision.
+The profile never guesses unlimited from a large sentinel amount.</p>
+<p>The API keeps the usual success/message envelope and returns a whitelisted snapshot:
+nullable total, used and remaining; currency or quota unit; display precision; account/key scope;
+declared usage period; server checkedAt; freshness/status; and an opaque shared-account reference.
+Only supported, known quantities are populated. It returns no key, target origin, response body, headers,
+upstream account identifier, traceback or supplier identity. Stable safe error categories distinguish
+unsupported, configuration, authorization, timeout, unavailable and invalid response; logs contain only
+channel ID, category and duration, not remote errors or amounts.</p>
+<h3>Cache and race behavior</h3>
+<p>Use a process-private keyed credential fingerprint plus normalized origin and effective profile configuration
+for cache identity; never expose or log the fingerprint. Authorize each requesting channel before any cache lookup.
+Bound entry count and outbound concurrency, coalesce concurrent refreshes and enforce a server cooldown.
+Repeated clicks inside the freshness interval return the existing snapshot; no force-refresh bypass,
+background polling, inference test or paid model call is needed. Client refresh disables duplicate actions.</p>
+<p>A failed refresh retains the last successful snapshot and its checkedAt with an error/stale state;
+an unqueried/restarted cache reports unknown, not the old float default zero.
+Freshness and expiry intervals must be fixed and documented in the test contract before implementation.
+Config/key edits change cache identity; recheck configuration before publishing an in-flight result.
+Invalidate affected frontend queries on save/logout. Closing or switching a dialog prevents a late result
+from updating another channel. Cached amounts do not persist across logout in browser storage.
+Multiple backend replicas may each query once; no Redis/distributed-lock infrastructure is justified for this slice.</p>
+
+<h2 id="visual">4. Visualization contract</h2>
+<p>Reuse the existing balance dialog, channel card/table and sensitive-visibility behavior.
+Show “Upstream account quota” (or explicitly configured key scope), remaining as the primary amount,
+total and upstream used as supporting values, and the server timestamp plus a manual refresh action.
+An optional labeled “Local gateway consumption” stays separate; it cannot define the progress denominator.
+Use the existing Base UI Progress track as used versus remaining when a valid finite positive total exists.
+Use textual labels and a legend, not color alone; Visactor is reserved for a demonstrated need beyond this bar.</p>
+<div class="scroll"><table>
+<thead><tr><th>State</th><th>Required rendering</th></tr></thead>
+<tbody>
+<tr><td>Finite positive total</td><td>Used/total percentage and two labeled amounts; true values retain configured precision.</td></tr>
+<tr><td>Overdrawn</td><td>Clamp only bar geometry to 100%; show actual used and negative remaining, with a text warning.</td></tr>
+<tr><td>Zero total</td><td>Show explicit zero amounts without division or percentage; distinguish from unknown.</td></tr>
+<tr><td>Missing total / balance-only legacy provider</td><td>Compact remaining value and “Total unavailable”; no invented denominator.</td></tr>
+<tr><td>Unlimited</td><td>Text only when an adapter has an explicit unlimited contract; first profile does not infer it.</td></tr>
+<tr><td>Loading / no snapshot</td><td>Accessible pending/unknown state, no $0 placeholder; old value remains visible during refresh.</td></tr>
+<tr><td>Failure / stale / unsupported</td><td>Safe inline reason, retained timestamp/value if available, retry only when supported; no raw JSON panel for the new path.</td></tr>
+</tbody></table></div>
+<p>UX/UI must cover keyboard focus and dialog dismissal, accessible amount/percentage descriptions,
+polite refresh status, reduced motion, WCAG AA contrast, light/dark themes, narrow screens and long numeric values.
+Use existing dialog/form/status wrappers and all seven locale files; locale conversion uses toIntlLocale.
+Do not silently format upstream USD using site token/recharge conversion: reuse lib/format or currency formatting
+only with an explicit authoritative unit. Exact layouts belong in the required UI reference, not this technical packet.</p>
+
+<h2 id="acceptance">5. Requirements, acceptance and implementation slices</h2>
+<div class="scroll"><table>
+<thead><tr><th>Requirement</th><th>Measurable acceptance</th><th>Slice</th></tr></thead>
+<tbody>
+<tr><td>REQ-001 · Generic compatibility</td><td>AC-001: A subscription total of 120 and usage of 2500 yields
+total 120, used 25, remaining 95 in declared units. Identical fixtures work for single-key OpenAI and Anthropic channels;
+no inference type/name selects a supplier. Alternate allowed paths work; incompatible shapes return invalid response.</td><td>S1 · backend/settings</td></tr>
+<tr><td>REQ-002 · Configurable private destination</td><td>AC-002: Environment aliases control origins;
+channel UI round-trips paths/unit/scope while preserving unrelated settings and masked credentials.
+Unlisted origins, invalid paths and unsupported channel kinds fail before credential dispatch.
+Committed code/design/fixtures contain no actual supplier identity, domain or key.</td><td>S1 + S2 · form</td></tr>
+<tr><td>REQ-003 · Safe privileged refresh</td><td>AC-003: Anonymous/common-user and insufficient Casbin/PAT scope
+requests cannot read or refresh; non-sensitive writers cannot redirect credentials. Tests reject redirect,
+private-IP/DNS-rebinding, proxy/TLS-bypass, oversized/malformed/error/missing numeric response and deadline failures.
+Responses/logs exclude upstream secrets and raw payloads.</td><td>S1</td></tr>
+<tr><td>REQ-004 · Correct account visualization</td><td>AC-004: Shared-credential channels produce one coalesced
+account refresh and never a summed quota. Percentages use only matched upstream total/used.
+Zero, overdrawn, unknown, balance-only, explicit-unlimited, pending, stale and failure states follow section 4;
+keyboard, screen-reader, theme and narrow-screen evidence demonstrates usable presentation.</td><td>S2 · dialog/card</td></tr>
+<tr><td>REQ-005 · Bounded lifecycle</td><td>AC-005: Requests honor declared deadline/body/cache/concurrency limits;
+cooldown prevents repeated outbound refresh, failed refresh preserves prior success and timestamp,
+configuration changes/dialog switching discard obsolete results. Restart reports unknown;
+no automatic polling or inference calls occur.</td><td>S1 + S2</td></tr>
+<tr><td>REQ-006 · Preserve deployed behavior/data</td><td>AC-006: Root and /new-api/ requests use the shared client.
+Unconfigured existing balance/Codex/inference/advanced-custom behavior is unchanged.
+No snapshot action mutates local quota, balance/status, pricing, user/token entities or existing credentials.
+Representative existing users, tokens and channels survive settings round-trip and rollback.</td><td>S3 · verification</td></tr>
+</tbody></table></div>
+<p><strong>S1:</strong> After all preparation gates, implement the opt-in typed profile, validation, safe transport,
+cached-read/manual-refresh contracts and focused backend tests.
+<strong>S2:</strong> Extend the existing channel form and balance presentation, strict response schemas and locales;
+share the normalized quota presentation between dialog and responsive rows without a parallel UI system.
+<strong>S3:</strong> Verify permission, network, lifecycle, root/subpath and data-preservation criteria.
+S1 alone is not the requested polished feature and must not be presented as finished.</p>
+
+<h2 id="gates">6. Readiness, risks and recovery</h2>
+<p><strong>r2 implementation authorization and bounded review, 2026-10-14:</strong> User explicitly authorizes the complete slice.
+<a href="ux.html">UX READY</a>; <a href="ui.html">UI READY (proposed Base UI fixtures)</a>.
+Direct design review: no mapper, new dependencies, database schema or persisted snapshot. Existing settings sensitivity gate reused.
+Shared-account identity stays private; UI labels account snapshots without a public fingerprint or grand total.
+Rows open the existing visualization rather than duplicate charts. Fresh 60 seconds, retry cooldown 10 seconds,
+stale after 60 seconds; 256 entries, 4 outbound refreshes, 10-second paired deadline, 256 KiB decoded bodies.
+Malformed origin environment fails startup. Public-source compatibility retrieval attempted but currently blocked/404;
+do not claim live compatibility. OWASP fetch attempts blocked by local DNS; guidance controls applied without a compliance claim.</p>
+<h3>Test solution · r2 READY</h3>
+<p>Observed compatibility evidence: local public origin/main source method reads numeric hard_limit_usd and total_usage,
+dividing usage by 100. This confirms the supported response shape, not live supplier scope, unit or availability.
+No supplier identity or credential is copied into this packet. Profile values are bounded at 10^12 with at most 12 decimal places;
+JSON structural depth is limited to 64. Equivalent server aliases share identity. Legacy configured GET now returns the cached snapshot
+without outbound traffic; the new authorized POST owns refresh, and legacy bulk refresh skips configured channels.
+Normalized account snapshots expose a shared-account warning, not a credential fingerprint or account identifier.</p>
+<p>TC-001 → AC-001/002: focused Go fixtures for numeric fields, scale, overrides, unit/scope/period, unsafe paths and missing/error responses.
+TC-002 → AC-003/005: protected-dialer boundary tests, redirect/TLS/proxy restrictions, bounded bodies, safe error response, cache retained after failed refresh and coalescing.
+TC-003 → AC-002/006, UX-AC-001: form JSON round-trip and unchanged key/settings behavior; existing authz/PAT route tests.
+TC-004 → AC-004/005/006, UX-AC-002..005: TS component tests and mock-HTTP browser verification on actual dialog in light/dark/mobile,
+known/unknown/zero/overdrawn/stale, disabled refresh and channel switching. RED is absence of new exports/visualization before implementation;
+GREEN requires fresh focused tests, strict typecheck, changed-file lint, production frontend build and Go build.
+No real credentials, provider requests or production database are needed. Real three-engine settings-write verification is a release blocker if unavailable.</p>
+<ul>
+<li><strong>UX REQUIRED:</strong> unresolved configuration, shared-account, refresh and failure journeys.
+<strong>UI reference REQUIRED:</strong> rendered quota bar/cards, themes and responsive states.
+<strong>Test design REQUIRED:</strong> authority/unit ambiguity, SSRF and account-deduplication regressions need criterion-level evidence.</li>
+<li><strong>Current stage: implement and verify.</strong> Technical interfaces and ownership are resolved for the stated compatibility profile;
+UX/UI and test contracts are recorded above. Reopen technical design if real responses require other units,
+periods, authentication or JSON shapes. Do not ask for or print real keys; use sanitized numeric fixtures.
+Supplier verification is a pre-release compatibility gate, not an excuse to hardcode a provider.</li>
+<li>Reuse settings storage without a schema migration, but exercise real SQLite/MySQL/PostgreSQL settings writes under
+the repository database contract. If relaykit DTOs change, verify that module independently with GOWORK=off.
+Extend controller/channel_billing_test.go and existing channel configuration/form tests before creating scattered test files;
+the later test contract owns exact commands and red/green evidence.</li>
+<li>New destination handling and credential transport must receive the applicable OWASP ASVS/SSRF/session guidance review
+before coding. Existing protected-fetch opt-outs are not acceptance evidence. A missing safe transport blocks release,
+not a reason to reuse the permissive inference client.</li>
+<li>Operational preservation: existing nonempty database users/tokens and channels are authoritative; never reset setup,
+seed empty entities or replace keys for testing. Deployment is a separately authorized stage with data backup,
+exact image/source offer and rollback; retain the current subpath and attribution/license contract.</li>
+<li>Recovery: disable the new profile or remove its environment allowlist to stop new outbound queries without touching inference.
+Rollback the code/image without database conversion; existing JSON settings remain intact.
+No production manifest, existing private-deployment packet or live branding settings are changed by this document.</li>
+</ul>
+<p><strong>Evidence status:</strong> source inspection only, pinned to the baseline above.
+No fresh feature tests, live balance requests or browser UI acceptance exist; no earlier evidence proves these new criteria.
+The native Archify boundary source below distinguishes current/reused ownership from proposed behavior.
+This repository lacks the parent documentation viewer runtime; generated interactive embedding and visual acceptance
+remain pending rather than introducing a documentation framework in this design-only change.</p>
+<p><small>2026-10-14 design verification: all relative source links resolve; six REQ/AC pairs are present;
+supplier-identity/key-pattern scan and git diff --check pass. The pinned Archify
+<code>d8e4daf2610d512821365f41b139d874b29efe81</code> renderer generated one native boundary viewer
+in temporary storage using buildArchifyDocs. This proves renderer/geometry acceptance, not browser visual acceptance.
+No viewer assets or application files were added to this repository.</small></p>
+<h3>r3 bounded design review and test amendment · 2026-10-14</h3>
+<p>Existing partial implementation inspected without reset. Reuse new-api Base UI and semantic tokens, not the parent
+AgentV Radix system. Rows/cards open one dialog; no cross-channel aggregation or extra chart framework.
+Key scope must be explicit in the quota heading; configured card labels must not imply a local-used denominator.
+Whitespace paths are invalid on both server and client. Mask-only update keys are omitted.
+The first profile only produces complete finite pairs: balance-only remains in the unchanged legacy dialog;
+unlimited is unsupported, never inferred. UI reference uses proposed fixtures, not release evidence.</p>
+<p>Fresh RED on this partial baseline: TestUpstreamBalanceRejectsWhitespacePaths fails for a space-containing path;
+Vitest “key scope” fails because the heading incorrectly says only account quota.
+TC-001/003/004 extend those oracles plus masked-key preservation, permission route metadata and pinned DNS dialing.
+Existing seven component cases and focused service tests pass on the partial baseline.
+OWASP SSRF, authentication and session guidance retrieval retried: all blocked by reserved-address DNS resolution;
+no compliance claim. Three-database write verification and live compatibility remain explicit release gates.</p>
+<h3>r3 implementation and fresh verification · 2026-10-14</h3>
+<p><strong>S1/S2 implemented; targeted verification PASS; overall release verification BLOCKED.</strong>
+Integrated the pre-existing partial work without reset. Backend: typed opt-in settings, environment aliases,
+strict protected transport, complete subscription/usage normalization, coalesced bounded cache, privileged cached-read/refresh,
+safe category/duration logging and legacy bulk exclusion. Frontend: existing form/dialog/table/card integration,
+authoritative units, Base UI used/remaining bar, shared-account warning, unknown/zero/overdrawn/stale/failure states,
+read-only refresh, pending cancellation/focus return, masked-key omission and seven locales.
+No dependencies, database schema, persisted snapshot, supplier constants or production operations were added.</p>
+<div class="scroll"><table><thead><tr><th>Contract</th><th>Fresh commands / evidence</th><th>Result</th></tr></thead><tbody>
+<tr><td>TC-001 → AC-001/002</td><td><code>go test ./service -run TestUpstreamBalance -count=1</code>:
+numeric shape and /100 scale, alternate paths, zero/overdrawn/decimal, rejected missing/string/null/error/failed envelopes,
+range/depth bounds and unsafe paths.</td><td>PASS</td></tr>
+<tr><td>TC-002 → AC-003/005</td><td>Same service suite plus TestProtectedFetch:
+redirect target never receives fixture credential; decoded gzip body bound; cancellation during body read;
+no environment proxy/TLS bypass; mixed private/public DNS rejection and pinned public IP;
+coalescing, equivalent aliases, freshness/cooldown, retained last success and credential/config cache separation.</td><td>PASS</td></tr>
+<tr><td>TC-003 → AC-002/003/006, UX-AC-001</td><td><code>go test ./router ./controller ./middleware -run
+'TestUpstreamBalance|TestChannelHasSensitiveChanges|TestUserAuthAppliesAccessTokenRouteRules|TestSessionCookieOriginGuard' -count=1</code>:
+anonymous/common-user denial, missing/wrong PAT scopes, revoked Casbin permission, sensitive profile edits and unchanged resubmission.
+Real SQLite 3.50.4 TEXT settings round-trip retains fixture channel credentials/status/local accounting and six fixture tokens.</td><td>PASS; MySQL/PostgreSQL pending</td></tr>
+<tr><td>TC-004 → AC-004/005/006, UX-AC-002..005</td><td><code>node node_modules/vitest/vitest.mjs run
+src/features/channels/components/__tests__/upstream-balance.test.tsx src/lib/__tests__/public-path.test.ts</code>:
+9 feature + 33 root/subpath cases. Pending refresh aborts on unmount and late result does not repopulate cache.
+<code>node scripts/verify-upstream-balance-browser.mjs</code> using BALANCE_PLAYWRIGHT/BALANCE_EDGE:
+actual component in Edge, light/dark at 375/1280px, pending disabled refresh/retained values,
+unknown/zero/overdrawn/stale/failure/read-only, accessible geometry, Escape/focus and no horizontal overflow.
+Only local mock HTTP; /new-api applied once. Direct file:// technical/UX/UI pages and offline state/theme controls pass.</td><td>42 tests + browser PASS</td></tr>
+<tr><td>Build / source gates</td><td><code>go build ./...</code>; relaykit <code>GOWORK=off go build ./...</code>;
+<code>node node_modules/@typescript/native-preview/bin/tsgo -b</code>;
+<code>node node_modules/@rsbuild/core/bin/rsbuild.js build</code>;
+changed-source oxlint, focused oxfmt and <code>git diff --check</code>.
+Go 1.26.1, x64 Node 24.13.0; system ARM Node cannot load installed x64 Vitest binding, so supplied x64 Node is required.</td><td>PASS</td></tr>
+</tbody></table></div>
+<p>Fresh mutation RED: changing usage /100 to /10 fails used/remaining assertions; enabling environment proxy fails strict
+transport oracle. Both mutations were immediately restored and service GREEN rerun.
+Route metadata oracle also failed until both new routes joined the existing permission registry.
+Screenshot perceptual review: mobile dark and desktop light have readable amounts, separated supporting labels,
+visible bar, wrapped timestamp and reachable controls. Four fixture screenshots are local in the deployment tools
+<code>balance-ui-evidence/</code> directory; no screenshot or credential was uploaded.</p>
+<p><strong>Remaining gates:</strong> real MySQL/PostgreSQL settings writes, live supplier compatibility, parent independent review
+and native Archify interactive-browser acceptance are not proved. OWASP retrieval remains blocked as recorded above.
+The broader existing channel-configuration Vitest suite did not complete during the bounded run and was stopped;
+it is not reported green. Whole-repository tests/dependency audit were not run. These are follow-up verification,
+not permission for production settings writes, deployment or publication. Existing private-deployment/branding work
+is outside this slice; no commit, push, restart, key retrieval or live inference occurred.</p>
+<h3>r4 live compatibility correction · 2026-10-15 · READY</h3>
+<p>The user now authorizes feature publication and deployment, with reuse of the existing saved credential only.
+Protected read-only compatibility showed the supported numeric fields and units, but floating-point serialization
+of cumulative usage can exceed twelve fractional digits. The r3 strict transport correctly failed closed with
+invalid_response; no amounts or raw provider payload were logged. Accept up to eighteen fractional digits
+before decimal /100 normalization, retaining the 32-character token, 10^12 amount, finite-value, depth and body bounds.
+This changes numeric representation tolerance only, not scope, period, units, authentication or response shape.
+Synthetic serialized-floating and beyond-bound fixtures protect both paths. Earlier twelve-digit evidence is historical.</p>
+<p>Independent correctness/necessity review reused the existing permission, settings, transport and dialog owners.
+One contract correction uses a process-private HMAC cache identity rather than an unkeyed credential digest.
+No supplier adapter, chart dependency, database migration or persistent snapshot is justified.
+Real disposable SQLite 3.50.4, MySQL 8.4.8 and PostgreSQL 17.11 settings TEXT round-trip and migration re-entry passed;
+keys, channel status and local accounting remain unchanged. Both database processes and their exact scratch directory
+were removed. Linux controller and relay/channel full suites passed after Windows-only file cleanup/platform failures;
+independent relaykit/tokenkit vet, build and tests passed. Targeted frontend 130 tests, strict types, changed-source lint
+and actual-component light/dark/mobile browser states passed. Full frontend verification passed: 187 files, 2264 tests.
+Whole-tree lint reports existing out-of-scope findings, not a clean result. Audit retains only accepted WVR-01.</p>
+<p>The corrected real upstream strict-TLS read-only gate passed: complete finite normalized pair,
+remaining arithmetic and cooldown; no key, raw payload or amount was logged.
+Windows deployment fixtures passed application, ingress and MySQL checks; the four Redis shell cases passed on Linux.
+Redis synthetic runtime is not rerun because this release changes neither Redis nor its credentials.
+The documentation diagram is explicitly inert JSON source, not an installed engineering-diagram viewer;
+interactive viewer acceptance is N/A for this release. Direct file:// packet navigation, states and themes passed.
+The user authorization supersedes historical no-publication/no-deployment scope notes, without authorizing shared
+application or credential mutations. Feature verification is PASS; production release verification remains pending.</p>
+<details><summary>Native boundary diagram source — proposed refresh path</summary>
+<p>Reader question: where can upstream credentials cross the boundary?
+Admin → permission-gated controller → dedicated protected transport → configured upstream;
+the channel key remains on the server, and only normalized amounts return.</p>
+<script type="application/json" data-doc-page>
+{
+  "main": [
+    {
+      "type": "archify-diagram",
+      "id": "upstream-account-balance-boundary",
+      "title": "Proposed credential boundary",
+      "diagram": {
+        "schema_version": 1,
+        "diagram_type": "architecture",
+        "meta": {
+          "title": "Proposed credential boundary",
+          "subtitle": "r1 proposal; existing owners reused, no live query",
+          "locale": "en",
+          "animation": "trace",
+          "visual_preset": "signal-flow",
+          "quality_profile": "showcase",
+          "views": [
+            {
+              "id": "safe-refresh",
+              "label": "Manual refresh",
+              "focus": ["admin", "controller", "transport", "upstream"],
+              "note": "Authorization precedes cache lookup; only protected transport receives the saved credential."
+            }
+          ]
+        },
+        "components": [
+          {"id":"admin","type":"frontend","label":"Admin console","sublabel":"Existing channels UI","pos":[40,170],"size":[175,80]},
+          {"id":"controller","type":"backend","label":"Balance controller","sublabel":"Proposed snapshot/cache","pos":[330,170],"size":[175,80]},
+          {"id":"transport","type":"security","label":"Protected transport","sublabel":"Proposed strict policy","pos":[620,170],"size":[175,80]},
+          {"id":"upstream","type":"external","label":"Configured upstream","sublabel":"Environment origin","pos":[970,170],"size":[175,80]}
+        ],
+        "boundaries": [
+          {"kind":"security-group","label":"Server · key stays here","wraps":["controller","transport"],"pad":30}
+        ],
+        "connections": [
+          {"id":"refresh","from":"admin","to":"controller","label":"Admin + operate","variant":"emphasis"},
+          {"id":"dispatch","from":"controller","to":"transport","label":"Saved key / GET","variant":"security"},
+          {"id":"fetch","from":"transport","to":"upstream","label":"HTTPS · no redirect","variant":"emphasis"}
+        ]
+      }
+    }
+  ]
+}
+</script>
+</details>
+</main>
+</body>
+</html>

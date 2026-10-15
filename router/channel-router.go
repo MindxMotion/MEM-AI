@@ -40,6 +40,7 @@ func joinPaths(absolutePath, relativePath string) string {
 func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	channelRoute := apiRouter.Group("/channel")
 	channelRoute.Use(middleware.AdminAuth())
+	originGuard := middleware.SessionCookieOriginGuard()
 
 	channelRoute.POST("/:id/key",
 		middleware.RootAuth(),
@@ -50,11 +51,27 @@ func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	)
 
 	for _, route := range channelPermissionRoutes {
-		handlePermissionRoute(channelRoute, route.method, route.path, route.permission, route.handler)
+		handlers := []gin.HandlerFunc{route.handler}
+		switch route.path {
+		case "/:id/upstream_balance":
+			handlers = append([]gin.HandlerFunc{middleware.DisableCache()}, handlers...)
+		case "/:id/upstream_balance/refresh":
+			handlers = append([]gin.HandlerFunc{func(c *gin.Context) {
+				// AdminAuth has already authenticated and scoped a PAT.
+				if c.GetBool("use_access_token") {
+					c.Next()
+					return
+				}
+				originGuard(c)
+			}, middleware.CriticalRateLimit(), middleware.DisableCache()}, handlers...)
+		}
+		handlePermissionRoute(channelRoute, route.method, route.path, route.permission, handlers...)
 	}
 }
 
 var channelPermissionRoutes = []permissionRoute{
+	{method: http.MethodGet, path: "/:id/upstream_balance", permission: authz.ChannelRead, handler: controller.GetUpstreamBalance},
+	{method: http.MethodPost, path: "/:id/upstream_balance/refresh", permission: authz.ChannelOperate, handler: controller.RefreshUpstreamBalance},
 	{method: http.MethodGet, path: "/", permission: authz.ChannelRead, handler: controller.GetAllChannels},
 	{method: http.MethodGet, path: "/search", permission: authz.ChannelRead, handler: controller.SearchChannels},
 	{method: http.MethodGet, path: "/models", permission: authz.ChannelRead, handler: controller.ChannelListModels},

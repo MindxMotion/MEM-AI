@@ -42,6 +42,10 @@ import {
 } from './advanced-custom'
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
 import { supportsResponsesWebSocket } from './responses-websocket'
+import {
+  balanceSettingsRecord,
+  upstreamBalanceProfileSchema,
+} from './upstream-balance'
 
 // ============================================================================
 // Form Validation Schema
@@ -252,7 +256,14 @@ export const channelFormSchema = z
     settings: z
       .string()
       .optional()
-      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
+      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON)
+      .refine((value) => {
+        const profile = balanceSettingsRecord(value ?? '{}').upstream_balance
+        return (
+          profile == null ||
+          upstreamBalanceProfileSchema.safeParse(profile).success
+        )
+      }, 'Invalid upstream balance configuration'),
     advanced_custom: z.string().optional(),
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
@@ -922,7 +933,7 @@ export function transformFormDataToUpdatePayload(
   }
 
   // Only include key if it was changed (not empty)
-  if (formData.key && formData.key.trim()) {
+  if (formData.key?.trim() && !/^[*•]+$/.test(formData.key.trim())) {
     payload.key = formData.key
   }
 

@@ -595,6 +595,10 @@ func UpdateChannelBalance(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "Task Plugin channels do not support balance queries"})
 		return
 	}
+	if profile, profileErr := service.ReadUpstreamBalanceSettings(channel.OtherSettings); profileErr != nil || profile != nil {
+		upstreamBalanceResponse(c, false) // Legacy GET reads only; privileged POST owns outbound refresh.
+		return
+	}
 	if channel.ChannelInfo.IsMultiKey {
 		common.ApiErrorT(c, "Multi-key channels do not support balance queries")
 		return
@@ -622,6 +626,9 @@ func updateAllChannelsBalance() error {
 		return err
 	}
 	for _, channel := range channels {
+		if profile, profileErr := service.ReadUpstreamBalanceSettings(channel.OtherSettings); profileErr != nil || profile != nil {
+			continue // Informational snapshots must never enter legacy auto-disable accounting.
+		}
 		if channel.Status != common.ChannelStatusEnabled {
 			continue
 		}

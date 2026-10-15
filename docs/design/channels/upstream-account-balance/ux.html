@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Balance UX</title><body>
+<h1>Upstream balance · r2 · READY</h1>
+<p><a href="design.html">Technical contract</a> · <a href="ui.html">UI fixtures</a></p>
+<p>Administrators opt into the legacy subscription/usage profile in Other Settings, declare matching cumulative account/key scope and unit, choose a server origin alias, and optionally override the two relative paths. No credential input is added. Sensitive edits use the existing sensitive-write gate.</p>
+<ul>
+<li>UX-AC-001 → AC-002: Disabled profile preserves other JSON properties. Enabled profile requires origin alias, scope, cumulative period and unit. Backend rejects unsafe configuration; existing form reports save errors.</li>
+<li>UX-AC-002 → AC-004: Query Balance opens the existing dialog, reads cached data without outbound traffic, and offers manual Refresh. Used, remaining, total, unit, scope, timestamp and “Shared account; do not sum channels” are explicit. No local quota denominator.</li>
+<li>UX-AC-003 → AC-004/005: Unknown never renders zero. Loading retains values. Failure retains last known values and timestamp with stale/error text. Zero has no percentage; overdrawn clamps geometry only. Closing/switching discards late results.</li>
+<li>UX-AC-004 → AC-003/004: Reuse Dialog focus trap/Escape/return focus, Button and Base UI Progress. Refresh status is polite live text; amount labels and percentage describe the bar. Read-only admins can read, not refresh. All text uses locale keys, numbers use toIntlLocale and authoritative units. No color-only meaning.</li>
+<li>UX-AC-005 → AC-004/006: Mobile wraps amounts and controls without horizontal overflow; light/dark use existing semantic tokens. Reduced motion suppresses progress transitions. Rows link to this single account visualization instead of duplicating or summing it.</li>
+</ul></body></html>

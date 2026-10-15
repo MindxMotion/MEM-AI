@@ -307,6 +307,9 @@ func InitResources() error {
 	ratio_setting.InitRatioSettings()
 
 	service.InitHttpClient()
+	if err = service.InitUpstreamBalanceOrigins(); err != nil {
+		return err
+	}
 
 	// Initialize SQL Database
 	err = model.InitDB()

@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Balance UI reference</title>
+<style>:root{color-scheme:light dark}body{font:16px/1.5 system-ui;margin:24px;background:light-dark(#fff,#171717);color:light-dark(#171717,#fafafa)}section{max-width:460px;border:1px solid #888;border-radius:12px;padding:24px;margin:20px auto}button,select{font:inherit;padding:8px}progress{width:100%;accent-color:light-dark(#171717,#fafafa)}dl{display:flex;flex-wrap:wrap;gap:24px}dd{margin:0;font-weight:600}small{display:block}h2{font-size:20px}button:focus-visible,select:focus-visible{outline:3px solid #3683bd}@media(max-width:420px){body{margin:12px}section{padding:16px}}@media(prefers-reduced-motion:reduce){*{transition:none}}</style>
+<script type="application/json" data-ui-contract>{"feature":"upstream balance","revision":"r3","status":"READY proposed","parents":["design.html","ux.html"],"baseline":"new-api Base UI Dialog/Button/Progress, semantic muted/primary tokens; not AgentV Radix","seams":["balance-query-dialog.tsx","channel-mutate-drawer.tsx"],"themes":["light","dark"],"viewports":[375,1280],"states":["known","unknown","zero","overdrawn","stale","loading","read-only","failure","configuration"],"notApplicable":{"unlimited":"Unsupported by first profile","missingTotal":"Retained legacy dialog; new profile returns complete pairs only"},"criteria":["AC-002","AC-004","AC-005","UX-AC-001","UX-AC-002","UX-AC-003","UX-AC-004","UX-AC-005"]}</script>
+<label>Fixture <select id="state"><option>known</option><option>unknown</option><option>zero</option><option>overdrawn</option><option>stale</option><option>loading</option><option>read-only</option><option>failure</option></select></label>
+<label>Theme <select id="theme"><option>light</option><option>dark</option></select></label>
+<section><h2>Upstream account quota</h2><p>Shared account; do not sum channels</p><div id="amounts"></div><p id="status" role="status"></p><button id="refresh">Refresh</button> <button>Close</button></section>
+<section><h2>Other Settings</h2><p>Proposed profile controls; save is inert.</p>
+<label>Upstream account quota <input type="checkbox" checked></label>
+<p>Confirm matching cumulative total and usage, unit and scope. Shared accounts must not be summed.</p>
+<p><label>Balance origin alias <input value="primary"></label></p>
+<p><label>Subscription path <input placeholder="/v1/dashboard/billing/subscription"></label></p>
+<p><label>Usage path <input placeholder="/v1/dashboard/billing/usage"></label></p>
+<p><label>Upstream unit <input value="USD"></label></p>
+<p><label>Balance scope (account or key) <input value="account"></label></p>
+<small>The saved channel key stays on the server. Paths are relative to a server-configured origin.</small>
+</section>
+<script>
+const state=document.querySelector('#state'),amounts=document.querySelector('#amounts'),status=document.querySelector('#status'),refresh=document.querySelector('#refresh');
+function render(){const s=state.value;let total=120,used=25;if(s==='zero'){total=0;used=0}if(s==='overdrawn')used=125;amounts.innerHTML=(s==='unknown'||s==='failure')?'<p>Unknown — refresh to check</p>':`<strong>Remaining: ${(total-used).toFixed(2)} USD</strong><dl><div><dt>Upstream used</dt><dd>${used.toFixed(2)} USD</dd></div><div><dt>Total</dt><dd>${total.toFixed(2)} USD</dd></div></dl>${total>0?`<progress aria-label="Upstream used" max="100" value="${Math.min(100,used/total*100)}"></progress><small>${(used/total*100).toFixed(1)}% used</small>`:''}<small>Account · cumulative · Last checked: 2026-10-14 18:00</small>`;status.textContent=s==='stale'?'Stale — unavailable; last known values retained':s==='overdrawn'?'Overdrawn':s==='loading'?'Refreshing…':s==='read-only'?'Read-only':s==='failure'?'Invalid upstream balance response':'';refresh.disabled=s==='loading'||s==='read-only'}
+state.onchange=render;document.querySelector('#theme').onchange=e=>document.documentElement.style.colorScheme=e.target.value;refresh.onclick=()=>{state.value='known';render()};render();
+</script></html>

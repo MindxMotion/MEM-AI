@@ -233,6 +233,7 @@ import {
 } from '../model-mapping-editor'
 import { ModelRedirectPanel } from '../model-redirect-panel'
 import { ResponsesWebSocketSetting } from '../responses-websocket-setting'
+import { UpstreamBalanceSettings } from '../upstream-balance-settings'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 import {
   ChannelConfiguration,
@@ -4718,6 +4719,16 @@ export function ChannelMutateDrawer({
                 {httpProtocolFields}
                 {httpShardsFields}
                 {tlsInsecureSkipVerifyFields}
+                <UpstreamBalanceSettings
+                  value={currentSettings ?? '{}'}
+                  error={form.formState.errors.settings?.message}
+                  onChange={(value) =>
+                    form.setValue('settings', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
               </fieldset>
             </div>
             {upstreamModelDetectionFields}

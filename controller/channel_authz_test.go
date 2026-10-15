@@ -94,6 +94,15 @@ func TestChannelHasSensitiveChanges(t *testing.T) {
 			"response_time": updated.ResponseTime,
 		}))
 	})
+
+	t.Run("upstream profile unchanged versus redirected", func(t *testing.T) {
+		configured := *origin
+		configured.OtherSettings = `{"preserved":true,"upstream_balance":{"origin":"primary","unit":"USD","scope":"account","period":"cumulative","profile":"legacy_subscription_usage"}}`
+		updated := PatchChannel{Channel: configured}
+		assert.False(t, channelHasSensitiveChanges(&updated, &configured, map[string]any{"settings": updated.OtherSettings}))
+		updated.OtherSettings = strings.Replace(configured.OtherSettings, "primary", "secondary", 1)
+		assert.True(t, channelHasSensitiveChanges(&updated, &configured, map[string]any{"settings": updated.OtherSettings}))
+	})
 }
 
 func TestClearChannelReadOnlyFields(t *testing.T) {

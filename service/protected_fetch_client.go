@@ -59,6 +59,24 @@ func newProtectedFetchHTTPClient() *http.Client {
 	return newProtectedFetchHTTPClientWithDialer(nil, nil, nil)
 }
 
+// NewStrictProtectedFetchClient reuses pinned DNS dialing without relay/fetch
+// opt-outs, environment proxies, insecure TLS or credential-bearing redirects.
+func NewStrictProtectedFetchClient() *http.Client {
+	protection := &common.SSRFProtection{ApplyIPFilterForDomain: true}
+	dialer := &protectedFetchDialer{
+		resolver:      net.DefaultResolver,
+		dialContext:   (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+		getProtection: func() (*common.SSRFProtection, bool, error) { return protection, true, nil },
+	}
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: dialer.DialContext, TLSHandshakeTimeout: 5 * time.Second,
+			MaxIdleConns: 8, MaxIdleConnsPerHost: 2, IdleConnTimeout: 30 * time.Second,
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 func newProtectedFetchHTTPClientWithDialer(resolver ssrfResolver, dialContext func(ctx context.Context, network, address string) (net.Conn, error), getProtection func() (*common.SSRFProtection, bool, error)) *http.Client {
 	return newProtectedFetchHTTPClientWithProxy(resolver, dialContext, getProtection, http.ProxyFromEnvironment)
 }

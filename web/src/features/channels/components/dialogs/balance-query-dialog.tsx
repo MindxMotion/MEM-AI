@@ -37,11 +37,13 @@ import { createServerError } from '@/lib/server-error-message'
 
 import { getCodexUsage, updateChannelBalance } from '../../api'
 import { channelsQueryKeys } from '../../lib'
+import { hasUpstreamBalance } from '../../lib/upstream-balance'
 import { useChannels } from '../channels-provider'
 import {
   CodexUsageDialog,
   type CodexUsageDialogData,
 } from './codex-usage-dialog'
+import { UpstreamBalanceDialog } from './upstream-balance-dialog'
 
 type BalanceQueryDialogProps = {
   initialRawResponse?: string
@@ -51,7 +53,7 @@ type BalanceQueryDialogProps = {
 
 export function BalanceQueryDialog(props: BalanceQueryDialogProps) {
   const { t } = useTranslation()
-  const { currentRow, setCurrentRow } = useChannels()
+  const { currentRow, setCurrentRow, sensitiveVisible } = useChannels()
   const queryClient = useQueryClient()
   const [isQuerying, setIsQuerying] = useState(false)
   const [balance, setBalance] = useState<number | null>(null)
@@ -64,7 +66,8 @@ export function BalanceQueryDialog(props: BalanceQueryDialogProps) {
   const [codexUsageResponse, setCodexUsageResponse] =
     useState<CodexUsageDialogData | null>(null)
 
-  const isCodex = currentRow?.type === 57
+  const isCodex =
+    currentRow?.type === 57 && !hasUpstreamBalance(currentRow.settings)
 
   const handleQueryCodexUsage = async () => {
     const row = currentRow
@@ -91,6 +94,17 @@ export function BalanceQueryDialog(props: BalanceQueryDialogProps) {
   }, [props.open, isCodex])
 
   if (!currentRow) return null
+  if (props.open && hasUpstreamBalance(currentRow.settings)) {
+    return (
+      <UpstreamBalanceDialog
+        key={currentRow.id}
+        channelId={currentRow.id}
+        channelName={sensitiveVisible ? currentRow.name : '******'}
+        sensitiveVisible={sensitiveVisible}
+        onClose={() => props.onOpenChange(false)}
+      />
+    )
+  }
 
   const handleQueryBalance = async () => {
     setIsQuerying(true)

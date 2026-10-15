@@ -530,6 +530,16 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
+	profile, profileErr := service.ReadUpstreamBalanceSettings(channel.OtherSettings)
+	if profileErr != nil {
+		return profileErr
+	}
+	if err := service.ValidateUpstreamBalanceProfile(profile); err != nil {
+		return err
+	}
+	if profile != nil && (channel.ChannelInfo.IsMultiKey || channel.Type == constant.ChannelTypeTaskPlugin) {
+		return fmt.Errorf("Unsupported upstream balance channel")
+	}
 
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
@@ -1132,6 +1142,10 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	if profile, err := service.ReadUpstreamBalanceSettings(channel.OtherSettings); err != nil || (profile != nil && channel.ChannelInfo.IsMultiKey) {
+		common.ApiErrorT(c, "Unsupported upstream balance channel")
+		return
+	}
 
 	if channelHasSensitiveChanges(&channel, originChannel, requestData) &&
 		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {

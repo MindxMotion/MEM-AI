@@ -21,6 +21,10 @@ import { api, type ApiRequestConfig } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type { InferenceStatus } from './lib/inference-status'
+import {
+  upstreamBalanceSnapshotSchema,
+  type UpstreamBalanceSnapshot,
+} from './lib/upstream-balance'
 import type {
   AddChannelRequest,
   BatchDeleteParams,
@@ -49,6 +53,33 @@ const channelActionConfig = (
   skipBusinessError: true,
   skipErrorHandler: true,
 })
+
+export async function getUpstreamBalance(
+  channelId: number,
+  signal?: AbortSignal
+): Promise<UpstreamBalanceSnapshot> {
+  const response = await api.get(`/api/channel/${channelId}/upstream_balance`, {
+    signal,
+    disableDuplicate: true,
+  })
+  return upstreamBalanceSnapshotSchema.parse(
+    requireServerSuccess(response.data).data
+  )
+}
+
+export async function refreshUpstreamBalance(
+  channelId: number,
+  signal?: AbortSignal
+): Promise<UpstreamBalanceSnapshot> {
+  const response = await api.post(
+    `/api/channel/${channelId}/upstream_balance/refresh`,
+    undefined,
+    { signal }
+  )
+  return upstreamBalanceSnapshotSchema.parse(
+    requireServerSuccess(response.data).data
+  )
+}
 
 export async function getInferenceStatus(
   channelId: number,

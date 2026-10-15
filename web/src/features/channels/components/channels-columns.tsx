@@ -86,6 +86,7 @@ import {
   isTagAggregateRow,
   type TagRow,
 } from '../lib'
+import { hasUpstreamBalance } from '../lib/upstream-balance'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
@@ -439,6 +440,11 @@ export function BalanceCell({ channel }: { channel: Channel }) {
     channel.type === CHANNEL_TYPE_SGLANG ? t('SGLang status') : t('vLLM status')
 
   const handleClickUpdate = async () => {
+    if (hasUpstreamBalance(channel.settings)) {
+      setCurrentRow(channel)
+      setOpen('balance-query')
+      return
+    }
     if (isInferenceChannel) {
       setCurrentRow(channel)
       setOpen('inference-status')
@@ -525,6 +531,20 @@ export function BalanceCell({ channel }: { channel: Channel }) {
       onClick={isInferenceChannel ? undefined : handleClickUpdate}
     />
   )
+
+  if (hasUpstreamBalance(channel.settings) && !isTagRow) {
+    return (
+      <Button
+        variant='ghost'
+        size='sm'
+        aria-haspopup='dialog'
+        data-upstream-balance-channel={channel.id}
+        onClick={handleClickUpdate}
+      >
+        {sensitiveVisible ? t('Upstream account quota') : SENSITIVE_MASK}
+      </Button>
+    )
+  }
 
   return (
     <TooltipProvider>

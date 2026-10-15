@@ -25,6 +25,7 @@ import { StatusBadgeTypeContext } from '@/components/status-badge'
 
 import { CHANNEL_STATUS } from '../constants'
 import { isTagAggregateRow, parseGroupsList } from '../lib'
+import { hasUpstreamBalance } from '../lib/upstream-balance'
 import type { Channel } from '../types'
 import { ChannelRowActionsLayoutContext } from './channel-row-actions-context'
 import { useChannels } from './channels-provider'
@@ -124,7 +125,13 @@ function ChannelCardComponent({
             </div>
             <dl className='col-span-3 grid grid-cols-subgrid gap-y-1'>
               <div className='row-span-2 grid min-w-0 grid-rows-subgrid'>
-                <dt className={labelClass}>{t('Used / Remaining')}</dt>
+                <dt className={labelClass}>
+                  {t(
+                    !isTagRow && hasUpstreamBalance(row.original.settings)
+                      ? 'Upstream account quota'
+                      : 'Used / Remaining'
+                  )}
+                </dt>
                 <dd className='min-w-0 text-sm tabular-nums [&_[data-slot=status-badge]]:!ml-0 [&>div]:ml-0 [&>div]:flex-wrap [&>div]:gap-x-3'>
                   {balanceCell ?? (
                     <span className='text-muted-foreground'>-</span>
