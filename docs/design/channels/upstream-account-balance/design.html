@@ -393,7 +393,7 @@ Earlier full Windows Go failures were file-lock/platform effects; controller and
 actual source fixtures, while the other root packages and independent modules passed their recorded runs.
 The later precision correction passed fresh service/controller/router/middleware tests and the real strict-TLS gate.</p>
 <p>Production transition changed only Deployment/new-api image and one private origin environment value.
-Server dry-run passed; namespace/context, node1/linux/amd64, Never, existing PVCs and immutable Secret remained fixed.
+Server dry-run passed; private namespace/context, configured node/linux/amd64, Never, existing PVCs and immutable Secret remained fixed.
 The initial rollout verifier rejected containerd's alternate repository alias; inspection proved the same manifest digest,
 Ready pod and healthy routes. The digest oracle was corrected without another apply or rollback.
 Final pod <code>new-api-77c9674df6-5hkrm</code> is Ready on the exact manifest above.

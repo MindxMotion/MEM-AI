@@ -137,7 +137,7 @@ ACL generation remains the manifest implementation.</p>
 <code>new-api-redis-acl-20261012a</code>, namespace <code>new-api</code>.
 Pod has no service-account token, runs UID999 with RuntimeDefault seccomp,
 read-only root and dropped capabilities. It uses only tmpfs and the cached,
-manifest-pinned Redis image on node1, pull policy Never. Deadline120s,
+manifest-pinned Redis image on example-node, pull policy Never. Deadline120s,
 backoffLimit0 and TTL300s bound lifecycle. Policy ingress and egress are empty,
 selecting only this unique test label; there are no host ports or public services.
 Pub/Sub now waits for an acknowledgement and received-message predicate,
@@ -145,15 +145,15 @@ with bounded retries rather than fixed publication delays.</p>
 <p>Fresh preparation: 5 local tests passed, 0 failed, 1 optional Docker runtime
 test skipped. Synthetic resource client and server dry-runs passed. Parent-owned
 namespace.yaml is present; namespace is observed live with no NetworkPolicies.
-Node1 PodCIDR is 10.233.64.0/24 and the exact Redis digest is cached.
+The selected example node's PodCIDR was verified privately and the exact Redis digest is cached.
 No Job or policy has been created by this worker. Apply still waits for the
 required parent namespace-apply notification and review of this candidate.</p>
 <pre>node deploy/production/redis-runtime.mjs new-api-redis-acl-20261012a |
-kubectl --context kubernetes-admin@cluster.local -n new-api create --dry-run=server -f -</pre>
+kubectl --context example-context -n new-api create --dry-run=server -f -</pre>
 <p>After notification and approval, recheck policy selection: NetworkPolicies are
 additive, so reject any existing rule granting this test Pod external traffic.
 Create the policy before the Job, then wait for completion. Inspect the live
-deny-all selectors, PodIP against node1 PodCIDR, no host networking, running
+deny-all selectors, PodIP against example-node PodCIDR, no host networking, running
 imageID and exit0. Require exactly two NEW_API_REDIS_ACL_TEST_PASSED markers.
 Do not print raw exceptions, ACL hashes or fixture contents. Deadline/failure
 is a failed proof, not a retry trigger. Confirm CNI policy enforcement separately;

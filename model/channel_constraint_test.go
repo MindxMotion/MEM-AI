@@ -17,6 +17,7 @@ func TestFilterCandidateIDs(t *testing.T) {
 	alpha := &Channel{Id: 900001, Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Setting: &alphaSetting}
 	beta := &Channel{Id: 900002, Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Setting: &betaSetting}
 	ordinary := &Channel{Id: 900003, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled}
+	claude := &Channel{Id: 900012, Type: constant.ChannelTypeAnthropic, Status: common.ChannelStatusEnabled}
 	kling := &Channel{Id: 900004, Type: constant.ChannelTypeKling, Status: common.ChannelStatusEnabled}
 	jimeng := &Channel{Id: 900005, Type: constant.ChannelTypeJimeng, Status: common.ChannelStatusEnabled}
 	matchingCustom := &Channel{Id: 900010, Type: constant.ChannelTypeAdvancedCustom, Status: common.ChannelStatusEnabled}
@@ -49,6 +50,21 @@ func TestFilterCandidateIDs(t *testing.T) {
 		wantKept  []int
 		wantEmpty dto.ChannelFilterKind
 	}{
+		{
+			name:      "embeddings route skips unsupported Claude adaptor",
+			ids:       []int{900012, 900003},
+			modelName: "text-embedding-3-small",
+			filters:   []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/embeddings"}},
+			wantKept:  []int{900003},
+		},
+		{
+			name:      "embeddings with no capable channel is unavailable",
+			ids:       []int{900012},
+			modelName: "text-embedding-3-small",
+			filters:   []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/embeddings"}},
+			wantKept:  []int{},
+			wantEmpty: dto.FilterRequestPath,
+		},
 		{
 			name:      "identity keeps matching type-59 key",
 			ids:       []int{900001, 900002},
@@ -157,6 +173,7 @@ func TestFilterCandidateIDs(t *testing.T) {
 		900005: jimeng,
 		900010: matchingCustom,
 		900011: otherCustom,
+		900012: claude,
 	}
 	t.Cleanup(func() {
 		channelsIDM = previous
@@ -215,4 +232,16 @@ func TestChannelSatisfiesFilters(t *testing.T) {
 	}})
 	assert.False(t, ok)
 	assert.Equal(t, dto.FilterRequestPath, kind)
+
+	for _, path := range []string{"/v1/embeddings", "/v1/rerank", "/v1/images/generations", "/v1/images/edits", "/v1/audio/transcriptions", "/v1/audio/translations", "/v1/audio/speech"} {
+		t.Run(path, func(t *testing.T) {
+			ok, kind := ChannelSatisfiesFilters(&Channel{Type: constant.ChannelTypeAnthropic}, "model", []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: path}})
+			assert.False(t, ok)
+			assert.Equal(t, dto.FilterRequestPath, kind)
+		})
+	}
+	for _, path := range []string{"/v1/chat/completions", "/v1/messages", "/v1/responses", "/pg/chat/completions"} {
+		ok, _ := ChannelSatisfiesFilters(&Channel{Type: constant.ChannelTypeAnthropic}, "model", []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: path}})
+		assert.True(t, ok, path)
+	}
 }

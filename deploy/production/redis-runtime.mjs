@@ -40,7 +40,7 @@ export async function testResources(name) {
       spec: { backoffLimit: 0, activeDeadlineSeconds: 90, ttlSecondsAfterFinished: 300,
         template: { metadata: { labels }, spec: {
           restartPolicy: "Never", automountServiceAccountToken: false, enableServiceLinks: false, hostNetwork: false,
-          nodeSelector: { "kubernetes.io/hostname": "node1" },
+          nodeSelector: { "kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux" },
           securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999,
             seccompProfile: { type: "RuntimeDefault" } },
           containers: [{ name: "redis-acl-test", image, imagePullPolicy: "Never", command: ["/bin/sh", "-ec", gatedScript],

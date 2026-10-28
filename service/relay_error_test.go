@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -151,6 +152,16 @@ func TestDecideRelayRetryReasons(t *testing.T) {
 			RequestPolicy(c).SessionModeSource = "global"
 		}, want: PolicyDecision{Action: "stop", Reason: "strict_session", Source: "global"}},
 		{name: "nil error", retries: 1, want: PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}},
+		{name: "cancelled client never retries", err: upstream(http.StatusServiceUnavailable), retries: 1, setup: func(c *gin.Context) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
+		}, want: PolicyDecision{Action: "stop", Reason: "request_cancelled", Source: "system"}},
+		{name: "started SSE never replays generation", err: upstream(http.StatusServiceUnavailable), retries: 1, setup: func(c *gin.Context) {
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			_, writeErr := c.Writer.Write([]byte("data: partial\n\n"))
+			require.NoError(t, writeErr)
+		}, want: PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())

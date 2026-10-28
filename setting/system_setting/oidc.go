@@ -26,6 +26,9 @@ func init() {
 }
 
 func GetOIDCSettings() *OIDCSettings {
+	if oidcEnvironment != nil {
+		return &oidcEnvironment.Settings
+	}
 	return &defaultOIDCSettings
 }
 

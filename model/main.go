@@ -370,6 +370,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
+		&RelayOutcome{},
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
@@ -378,6 +379,9 @@ func migrateDB() error {
 		&UserAccessToken{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := MigrateIntegrationClients(DB); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {

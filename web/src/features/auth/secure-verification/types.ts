@@ -25,6 +25,9 @@ export type VerificationMethod =
   | 'oauth'
   | 'session'
 export type SecurityProofScope =
+  | 'integration_client.create'
+  | 'integration_client.rotate'
+  | 'integration_client.status'
   | 'channel.key.read'
   | 'passkey.register'
   | 'passkey.delete'
@@ -51,6 +54,15 @@ export type SecurityProofScope =
 export type AdminUserManageAction = 'disable' | 'enable' | 'promote' | 'demote'
 
 export type VerificationOperation =
+  | {
+      scope: 'integration_client.create'
+      context: { name: string; issuer: string; oidc_client_id: string }
+    }
+  | { scope: 'integration_client.rotate'; context: { client_id: string } }
+  | {
+      scope: 'integration_client.status'
+      context: { client_id: string; enabled: boolean }
+    }
   | { scope: 'channel.key.read'; context: { channel_id: number } }
   | {
       scope: 'account.binding.bind'
@@ -98,6 +110,7 @@ export type VerificationOperation =
         | 'access_token.update'
         | 'access_token.revoke'
         | `admin.user.${string}`
+        | `integration_client.${string}`
       >
       context?: Record<string, never>
     }

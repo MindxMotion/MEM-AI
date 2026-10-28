@@ -88,13 +88,14 @@ test("private provisioning refuses drift and retains credentials on unconfirmed 
       const script = source.replaceAll("/root/new-api-deploy", packagePath.replaceAll("\\", "/"))
         .replaceAll("/dev/shm", fixture.replaceAll("\\", "/"));
       const result = spawnSync("bash", ["-s", "--", "--apply"], {
+        env: { ...process.env, DEPLOY_CONTEXT: "example-context" },
         encoding: "utf8", timeout: 10_000,
         input: `id() { printf 0; }
 stat() { printf '0:700'; }
 openssl() { printf '%064d\\n' 0; }
 kubectl() {
   if [[ "$*" == "config current-context" ]]; then
-    printf '${state === "wrong-context" ? "wrong" : "kubernetes-admin@cluster.local"}'
+    printf '${state === "wrong-context" ? "wrong" : "example-context"}'
   elif [[ "$*" == *"get namespace"* ]]; then
     ${state === "namespace-missing" ? "return 1" : ":"}
   elif [[ "$*" == *"get secret"* ]]; then

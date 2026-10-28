@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +34,7 @@ type oauthFlowPayload struct {
 	AffiliateCode   string                         `json:"affiliate_code,omitempty"`
 	Verification    *service.OAuthVerificationFlow `json:"verification,omitempty"`
 	Telegram        *oauth.TelegramOAuthFlow       `json:"telegram,omitempty"`
+	OIDC            *oauth.OIDCFlow                `json:"oidc,omitempty"`
 	SessionIdentity *service.AuthIdentity          `json:"session_identity,omitempty"`
 	Authorization   *model.AuthFlowAuthorization   `json:"authorization,omitempty"`
 }
@@ -63,6 +66,35 @@ func GenerateOAuthCode(c *gin.Context) {
 	sessionID := ""
 	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}
 	bindingStarted := false
+	var oidcProvider *oauth.OIDCProvider
+	if request.Provider == "oidc" {
+		provider, ok := oauth.GetProvider("oidc").(*oauth.OIDCProvider)
+		if !ok || !provider.IsEnabled() {
+			common.ApiErrorT(c, "{{provider}} login and registration has not been enabled by administrator", providerParams("OIDC"))
+			return
+		}
+		oidcProvider = provider
+		browserToken, _ := c.Cookie("new_api_oidc_browser")
+		if len(browserToken) != 43 {
+			browserToken = oauth2.GenerateVerifier()
+		}
+		flow, err := provider.NewFlow(c.Request.Context(), browserToken)
+		if err != nil {
+			handleOAuthError(c, err)
+			return
+		}
+		flowPayload.OIDC = flow
+		configuration, err := system_setting.GetOIDCConfiguration()
+		if err != nil {
+			writeSecurityOperationError(c, err)
+			return
+		}
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name: "new_api_oidc_browser", Value: browserToken, Path: common.SessionHintCookiePath,
+			MaxAge: int(oauthAuthFlowTTL.Seconds()), HttpOnly: true,
+			Secure: strings.HasPrefix(configuration.RedirectURI, "https://"), SameSite: http.SameSiteLaxMode,
+		})
+	}
 	if request.Provider == "telegram" {
 		telegramFlow, err := oauth.NewTelegramOAuthFlow()
 		if err != nil {
@@ -94,7 +126,7 @@ func GenerateOAuthCode(c *gin.Context) {
 			}
 			flowPayload.SessionIdentity = &identity
 		}
-		if flowPayload.Telegram != nil {
+		if flowPayload.Telegram != nil || flowPayload.OIDC != nil {
 			if _, _, err := service.ValidateLoginSession(identity); err != nil {
 				writeSecurityOperationError(c, err)
 				return
@@ -133,6 +165,14 @@ func GenerateOAuthCode(c *gin.Context) {
 	data := gin.H{"flow_token": state, "expires_at": expiresAt.Unix()}
 	if flowPayload.Telegram != nil {
 		data["authorization_url"] = flowPayload.Telegram.AuthorizationURL(state)
+	}
+	if flowPayload.OIDC != nil {
+		authorizationURL, err := oidcProvider.AuthorizationURL(c.Request.Context(), flowPayload.OIDC, state)
+		if err != nil {
+			handleOAuthError(c, err)
+			return
+		}
+		data["authorization_url"] = authorizationURL
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -203,6 +243,27 @@ func HandleOAuth(c *gin.Context) {
 	}
 
 	// 3. Check if provider is enabled
+	if providerName == "oidc" {
+		var payload oauthFlowPayload
+		browserToken, _ := c.Cookie("new_api_oidc_browser")
+		if err := common.UnmarshalJsonStr(pendingFlow.Payload, &payload); err != nil ||
+			payload.OIDC == nil || !payload.OIDC.MatchesBrowser(browserToken) {
+			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
+		if pendingFlow.Intent != model.AuthFlowIntentLogin {
+			identity, _ := middleware.GetSessionAuthIdentity(c)
+			if payload.SessionIdentity == nil || *payload.SessionIdentity != identity {
+				writeSecurityOperationError(c, model.ErrAuthFlowInvalid)
+				return
+			}
+			if _, _, err := service.ValidateLoginSession(identity); err != nil {
+				writeSecurityOperationError(c, err)
+				return
+			}
+		}
+		c.Set(oauth.OIDCFlowContextKey, payload.OIDC)
+	}
 	var telegramPayload oauthFlowPayload
 	if providerName == "telegram" {
 		if err := oauth.TelegramConfigurationError(); err != nil {
@@ -236,6 +297,10 @@ func HandleOAuth(c *gin.Context) {
 	if errorCode != "" {
 		if _, err := model.ConsumeAuthFlow(state, consumeMatch); err != nil {
 			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
+		if providerName == "oidc" {
+			common.ApiErrorT(c, "Failed to initialize OAuth")
 			return
 		}
 		errorDescription := c.Query("error_description")
@@ -474,8 +539,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		}
 	}
 
-	// User doesn't exist, create new user if registration is enabled
-	if !common.RegisterEnabled {
+	// Only the configured built-in OIDC provider may bypass closed public signup.
+	_, isOIDC := provider.(*oauth.OIDCProvider)
+	if !common.RegisterEnabled && !(isOIDC && system_setting.OIDCRegistrationEnabled()) {
 		return nil, nil, &OAuthRegistrationDisabledError{}
 	}
 

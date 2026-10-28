@@ -62,6 +62,147 @@ New API is a self-hosted AI gateway for applications, agents, and teams. Connect
 
 Use it to share authorized model access across a team, switch providers without configuring every client again, or operate a private multi-model service with a web console. Upstreams include OpenAI, Anthropic, Google Gemini, Azure OpenAI, AWS Bedrock, Vertex AI, DeepSeek, Qwen, and other compatible services.
 
+### Server-to-server balance integration
+
+Root administrators can manage **Integration clients** under **System Settings → Authentication**.
+Creation, secret rotation and enable/disable operations require a signed-in browser
+session and the existing security-verification flow. A service client is **not**
+a root user: its only permission is `balance:read`; it cannot access dashboard,
+user-management or model-inference APIs.
+
+Copy the client ID and secret after creation. Secrets are displayed once, stored
+only as SHA-256 verifiers of cryptographically random values, and expire after
+90 days. Rotate before expiry. Rotation or any status change immediately revokes
+previous access tokens, including after a client is re-enabled.
+
+The calling **backend**, never the browser, exchanges its credentials over HTTPS:
+
+```http
+POST {site-base-url}/api/integration/v1/token
+Authorization: Basic base64(form-url-encoded-client-id:form-url-encoded-client-secret)
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials&scope=balance%3Aread
+```
+
+The response contains `access_token`, `token_type: "Bearer"`, `expires_in`
+(at most 300 seconds) and `scope: "balance:read"`. Cache the token server-side
+until shortly before expiry; no refresh token or password grant is supported.
+Then call the single available business endpoint:
+
+```http
+GET {site-base-url}/api/integration/v1/balance?subject={url-encoded-oidc-sub}
+Authorization: Bearer {access_token}
+```
+
+```json
+{
+  "data": {
+    "remaining": "17.283",
+    "unit": "CNY",
+    "symbol": "¥",
+    "as_of": "2026-10-28T00:00:00Z"
+  }
+}
+```
+
+The example amount is illustrative. `remaining` is a decimal string in the
+site's configured display unit (`USD`, `CNY`, `CUSTOM`, or `TOKENS`); `TOKENS`
+means internal quota points, not a promise of a fixed number of model tokens.
+This is the account's remaining wallet balance, not an API key limit or unused
+subscription allowance. It is a display snapshot using the gateway's existing
+quota source, not a transactionally reserved spending authorization.
+
+Include any deployment subpath in `{site-base-url}`, for example
+`https://example.com/new-api`. Responses are marked `no-store`. Token issuance
+is limited to 20 requests/minute/IP, and balance reads to 120 requests/minute/client,
+in addition to the existing global API limits. Honor `429` and `Retry-After`.
+Unknown, disabled or ambiguously bound users return `404 account_not_available`;
+authentication failures return `401`; temporary failures return `503`, never a
+success-shaped zero balance. Queries do not create accounts. Use a short timeout
+and optionally cache per-user card data for 15–30 seconds without blocking login.
+
+**Trust boundary:** each client is intended for a trusted first-party backend
+authorized to read balances for users of the configured OIDC identity source.
+That backend must derive the subject from its verified login session, not an
+arbitrary browser parameter. New API uses an exact match against the stored OIDC
+`sub`, not email or display name. Different OIDC clients can receive pairwise
+subjects: arrange an authorized stable mapping with the identity provider first.
+Each integration client is pinned to the gateway's OIDC issuer and client ID;
+changing either makes it inactive. This interface is not third-party delegated
+user authorization and must not be handed to untrusted clients.
+
+Security design references: OWASP ASVS **5.0.0**, requirements **9.1.1–9.1.3**
+(signature/algorithm/key validation), **9.2.1–9.2.3** (expiry, purpose and audience),
+**10.3.1–10.3.3** (resource scope and stable identity), **10.4.4**, **10.4.10–10.4.11**
+(restricted grant, confidential-client authentication and least privilege), and
+the OWASP Authentication, Session Management, OAuth2 and CSRF Prevention Cheat
+Sheets. This implementation uses short-lived bearer tokens and `client_secret_basic`,
+not mTLS/DPoP or `private_key_jwt`; it does not claim ASVS Level 3 or certification.
+Production must terminate HTTPS securely and keep secrets/tokens out of reverse
+proxy, request-body and authorization-header logs. Service credentials are also
+rejected before dashboard or relay legacy-key database lookups.
+
+### Canonical console path and legacy API compatibility
+
+The production ingress template uses `/mem-ai/` as the primary console URL and
+retains `/new-api/` as a compatibility mount for the same New API service.
+Legacy console GET/HEAD requests redirect to the corresponding `/mem-ai/`
+page, preserving the path and query. Management APIs, model APIs (including
+streaming and WebSockets), Midjourney routes and source archives remain
+directly proxied at both mounts. POST bodies and authorization headers are
+not moved through browser redirects.
+
+Build the frontend with `VITE_APP_BASE_PATH=/mem-ai` and
+`VITE_CORRESPONDING_SOURCE_URL=/mem-ai/source.tar.gz`, and configure the server
+with `APP_BASE_PATH=/mem-ai`. Keep HTTPS-only, host-only session cookies scoped
+to the application, not the domain root. Existing `/new-api/` browser sessions
+may need to sign in again after migration; do not broaden cookie scope or copy
+credentials into URLs to bypass this.
+
+An existing registered OIDC redirect URI such as `/new-api/oauth/oidc` can stay
+unchanged: that browser page redirects to `/mem-ai/oauth/oidc`, while the server
+continues using the exact registered URI for authorization and token exchange.
+Keep state, nonce, PKCE and browser binding checks enabled. In-flight login
+flows started before migration may need restarting. No identity-provider
+wildcard callback or application credential change is required.
+
+Migration controls follow the OWASP Authentication, Session Management and
+OAuth2 Cheat Sheets: fixed same-origin redirects, restrictive cookie paths,
+HTTPS, and unchanged authorization-code and CSRF verification. This changes
+deployment URLs only, not the New API / QuantumNous project identity.
+
+### Relay reliability diagnostics
+
+With `ERROR_LOG_ENABLED=true`, supported synchronous relay HTTP endpoints also
+write one terminal observation per request to `relay_outcomes` in the **primary**
+database. This is separate from billing logs and per-attempt error logs. It
+distinguishes success, failure, cancellation, rejection and incomplete responses;
+HTTP 200 alone does not establish stream completion. WebSocket sessions and
+asynchronous task lifecycles are not included in this HTTP dataset.
+
+Observations contain bounded client-family and endpoint classifications, model
+and final channel, attempt count, latency, unknown-aware first-response timing,
+and validated JSON shape flags. Request-size buckets measure **body bytes**, not
+prompt tokens. Client family is inferred from User-Agent and is not an
+authenticated identity. No prompt text, tool names, image data, raw User-Agent,
+user identifiers, IP addresses, credentials or upstream error messages are saved
+in these observations. Missing/unparsed features must not be interpreted as
+negative observations.
+
+Persistence is best effort: a bounded 1024-entry queue, one worker and a
+three-second write timeout keep diagnostics off the request's database path.
+Monitor accepted/written/dropped/failed/queued counters before interpreting
+success rates. Hourly indexed cleanup removes at most 500 observations older
+than 30 days; this is a bounded cleanup policy, not an exact TTL at high volume.
+Existing consume/error logs now use the same normalized client-family tags.
+
+Claude channels are excluded from unsupported embedding, rerank, image and audio
+routes before sending upstream or reserving request quota. Add an actually
+capable upstream to serve those endpoints; advertising a model name alone does
+not implement a protocol. Streaming responses are never transparently replayed
+after downstream output has started.
+
 > [!IMPORTANT]
 > - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private deployment scenarios.
 > - Users must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and must comply with upstream terms of service and applicable laws and regulations.

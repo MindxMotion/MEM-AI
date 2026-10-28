@@ -21,6 +21,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 import { BasicAuthSection } from './basic-auth-section'
 import { BotProtectionSection } from './bot-protection-section'
 import { CustomOAuthSection } from './custom-oauth/custom-oauth-section'
+import { IntegrationClientsSection } from './integration-clients/integration-clients-section'
 import { OAuthSection } from './oauth-section'
 import { PasskeySection } from './passkey-section'
 
@@ -121,6 +122,11 @@ const AUTH_SECTIONS = [
     build: (settings: AuthSettings) => (
       <CustomOAuthSection serverAddress={settings.ServerAddress} />
     ),
+  },
+  {
+    id: 'integration-clients',
+    titleKey: 'Integration clients',
+    build: (_settings: AuthSettings) => <IntegrationClientsSection />,
   },
 ] as const
 

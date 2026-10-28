@@ -36,7 +36,7 @@
           "spec": {
             "automountServiceAccountToken": false,
             "hostNetwork": false,
-            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux", "kubernetes.io/hostname": "node1"},
+            "nodeSelector": {"kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux"},
             "securityContext": {
               "runAsNonRoot": true, "runAsUser": 10001, "runAsGroup": 10001,
               "fsGroup": 10001, "fsGroupChangePolicy": "OnRootMismatch",
@@ -48,7 +48,7 @@
               "imagePullPolicy": "Never",
               "workingDir": "/data",
               "command": ["/bin/sh", "-ec"],
-              "args": ["set +x\numask 077\nfail() { printf 'NEW_API_REQUIRED_CONFIG_INVALID\\n' >&2; exit 1; }\ncase \"${SQL_DSN:-}\" in new_api_app:*'@tcp('*')/new_api?'*) ;; *) fail ;; esac\ncase \"&${SQL_DSN#*\\?}&\" in *'&tls=true&'*) ;; *) fail ;; esac\n[ -n \"${SESSION_SECRET:-}\" ] && [ -n \"${CRYPTO_SECRET:-}\" ] && [ \"$SESSION_SECRET\" != \"$CRYPTO_SECRET\" ] || fail\ncase \"${REDIS_CONN_STRING:-}\" in redis://new_api:*@new-api-redis.new-api.svc.cluster.local:6379/0) ;; *) fail ;; esac\n[ \"${APP_BASE_PATH:-}\" = /new-api ] && [ \"${SSL_CERT_FILE:-}\" = /run/new-api-ca/mysql-ca.pem ] && [ -s \"$SSL_CERT_FILE\" ] || fail\nexec /new-api --port 3000 --log-dir /data/logs"],
+              "args": ["set +x\numask 077\nfail() { printf 'NEW_API_REQUIRED_CONFIG_INVALID\\n' >&2; exit 1; }\ncase \"${SQL_DSN:-}\" in new_api_app:*'@tcp('*')/new_api?'*) ;; *) fail ;; esac\ncase \"&${SQL_DSN#*\\?}&\" in *'&tls=true&'*) ;; *) fail ;; esac\n[ -n \"${SESSION_SECRET:-}\" ] && [ -n \"${CRYPTO_SECRET:-}\" ] && [ \"$SESSION_SECRET\" != \"$CRYPTO_SECRET\" ] || fail\ncase \"${REDIS_CONN_STRING:-}\" in redis://new_api:*@new-api-redis.new-api.svc.cluster.local:6379/0) ;; *) fail ;; esac\ncase \"${APP_BASE_PATH:-}\" in /new-api|/mem-ai) ;; *) fail ;; esac\n[ \"${SSL_CERT_FILE:-}\" = /run/new-api-ca/mysql-ca.pem ] && [ -s \"$SSL_CERT_FILE\" ] || fail\nexec /new-api --port 3000 --log-dir /data/logs"],
               "securityContext": {
                 "allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true,
                 "capabilities": {"drop": ["ALL"]}
@@ -59,9 +59,9 @@
                 {"name": "REDIS_CONN_STRING", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "REDIS_CONN_STRING"}}},
                 {"name": "SESSION_SECRET", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "SESSION_SECRET"}}},
                 {"name": "CRYPTO_SECRET", "valueFrom": {"secretKeyRef": {"name": "new-api-app-auth", "key": "CRYPTO_SECRET"}}},
-                {"name": "APP_BASE_PATH", "value": "/new-api"},
+                {"name": "APP_BASE_PATH", "value": "/mem-ai"},
                 {"name": "SESSION_COOKIE_SECURE", "value": "true"},
-                {"name": "SESSION_COOKIE_TRUSTED_URL", "value": "https://thedoorofai.com"},
+                {"name": "SESSION_COOKIE_TRUSTED_URL", "value": "https://gateway.example.com"},
                 {"name": "SSL_CERT_FILE", "value": "/run/new-api-ca/mysql-ca.pem"},
                 {"name": "DEBUG", "value": "false"},
                 {"name": "DIFY_DEBUG", "value": "false"},

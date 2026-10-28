@@ -21,6 +21,12 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	if err == nil {
 		return PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}
 	}
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
+		return PolicyDecision{Action: "stop", Reason: "request_cancelled", Source: "system"}
+	}
+	if c != nil && c.Writer != nil && c.Writer.Written() {
+		return PolicyDecision{Action: "stop", Reason: "response_started", Source: "system"}
+	}
 	if ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		source := RequestPolicy(c).SessionModeSource
 		if source == "" {
@@ -93,6 +99,14 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
+		other.SetPublic("elapsed_ms", time.Since(startTime).Milliseconds())
+		if relayInfo != nil && relayInfo.StreamStatus != nil {
+			other.SetAdmin("stream_failure", map[string]any{
+				"end_reason":      string(relayInfo.StreamStatus.EndReason),
+				"response_status": relayInfo.StreamStatus.ResponseOutcome(),
+				"error_count":     relayInfo.StreamStatus.ErrorCount,
+			})
+		}
 		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 }

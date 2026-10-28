@@ -7,7 +7,7 @@ umask 077
   printf 'Requires reviewed --apply; creates only New API Redis credentials\n' >&2
   exit 1
 }
-context=kubernetes-admin@cluster.local
+context="${DEPLOY_CONTEXT:?DEPLOY_CONTEXT is required}"
 namespace=new-api
 target=/root/new-api-deploy/redis.env
 [[ "$(id -u)" == 0 && "$(kubectl config current-context)" == "${context}" ]] || exit 1

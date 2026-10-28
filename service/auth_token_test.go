@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -11,6 +12,45 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIntegrationTokenRejectsInvalidSecurityClaims(t *testing.T) {
+	useTestSessionSecret(t)
+	now := time.Now().Truncate(time.Second)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*integrationClaims)
+	}{
+		{"expired", func(claims *integrationClaims) { claims.ExpiresAt = jwt.NewNumericDate(now.Add(-time.Second)) }},
+		{"wrong audience", func(claims *integrationClaims) { claims.Audience = jwt.ClaimStrings{"new-api-dashboard"} }},
+		{"wrong issuer", func(claims *integrationClaims) { claims.Issuer = "external-issuer" }},
+		{"broader scope", func(claims *integrationClaims) { claims.Scope = "balance:read admin:write" }},
+		{"future issue time", func(claims *integrationClaims) { claims.IssuedAt = jwt.NewNumericDate(now.Add(time.Hour)) }},
+		{"missing issue time", func(claims *integrationClaims) { claims.IssuedAt = nil }},
+		{"future not-before", func(claims *integrationClaims) { claims.NotBefore = jwt.NewNumericDate(now.Add(time.Hour)) }},
+		{"missing not-before", func(claims *integrationClaims) { claims.NotBefore = nil }},
+		{"missing expiry", func(claims *integrationClaims) { claims.ExpiresAt = nil }},
+		{"missing version", func(claims *integrationClaims) { claims.Version = "" }},
+		{"missing token id", func(claims *integrationClaims) { claims.ID = "" }},
+		{"unbounded lifetime", func(claims *integrationClaims) { claims.ExpiresAt = jwt.NewNumericDate(now.Add(time.Hour)) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			claims := integrationClaims{
+				Scope: IntegrationBalanceScope, Version: "version",
+				RegisteredClaims: jwt.RegisteredClaims{
+					Issuer: integrationIssuer, Subject: "client",
+					Audience: jwt.ClaimStrings{integrationAudience},
+					IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now),
+					ExpiresAt: jwt.NewNumericDate(now.Add(IntegrationTokenTTL)), ID: "token-id",
+				},
+			}
+			tc.mutate(&claims)
+			raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(authSigningKey("integration-client"))
+			require.NoError(t, err)
+			_, err = ValidateIntegrationToken(context.Background(), raw)
+			require.ErrorIs(t, err, ErrIntegrationCredential)
+		})
+	}
+}
 
 func useTestSessionSecret(t *testing.T) {
 	t.Helper()

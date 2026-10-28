@@ -33,6 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/service/authz"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -74,11 +75,27 @@ func main() {
 	kitutil.Debug.Store(common.DebugEnabled)
 
 	defer func() {
+		if constant.ErrorLogEnabled {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := model.StopErrorLogWriter(ctx); err != nil {
+				common.SysError(common.LogText("async relay error log shutdown timed out; queued diagnostics may be lost"))
+			}
+			outcomeContext, outcomeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer outcomeCancel()
+			if err := model.StopRelayOutcomeWriter(outcomeContext); err != nil {
+				common.SysError(common.LogText("async relay outcome shutdown timed out; queued diagnostics may be lost"))
+			}
+		}
 		err := model.CloseDB()
 		if err != nil {
 			common.FatalLog(common.LogText("failed to close database: %s", err.Error()))
 		}
 	}()
+	if constant.ErrorLogEnabled {
+		model.StartErrorLogWriter()
+		model.StartRelayOutcomeWriter()
+	}
 
 	if common.RedisEnabled {
 		// for compatibility with old versions
@@ -300,6 +317,9 @@ func InitResources() error {
 
 	// 加载环境变量
 	common.InitEnv()
+	if err := system_setting.LoadOIDCEnvironment(); err != nil {
+		return err
+	}
 
 	logger.SetupLogger()
 

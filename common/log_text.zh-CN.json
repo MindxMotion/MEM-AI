@@ -1,4 +1,7 @@
 {
+  "async relay error log shutdown timed out; queued diagnostics may be lost": "异步中继错误日志关闭超时，队列中的诊断记录可能丢失",
+  "async relay error logging enabled: capacity=1024 workers=1 write_timeout=3s": "异步中继错误日志已启用：队列容量=1024，工作线程=1，写入超时=3秒",
+  "async relay error logs: accepted=%d written=%d dropped=%d failed=%d queued=%d": "异步中继错误日志：接收=%d，写入=%d，丢弃=%d，写入失败=%d，排队=%d",
   "%d quota points": "%d 点额度",
   "%s after refresh: %s": "%s（刷新凭证后重试）: %s",
   "%s failed: %s": "%s 构建失败，%s",

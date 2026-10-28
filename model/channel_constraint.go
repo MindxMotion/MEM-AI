@@ -93,6 +93,13 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		if filter.RequestPath == "" {
 			return true
 		}
+		if ch.Type == constant.ChannelTypeAnthropic {
+			switch filter.RequestPath {
+			case "/v1/embeddings", "/v1/rerank", "/v1/images/generations", "/v1/images/edits",
+				"/v1/audio/transcriptions", "/v1/audio/translations", "/v1/audio/speech":
+				return false
+			}
+		}
 		if !constant.IsAdvancedCustomChannel(ch.Type) {
 			return true
 		}

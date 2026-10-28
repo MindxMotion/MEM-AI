@@ -13,7 +13,7 @@ import sys
 from urllib.parse import parse_qsl
 
 
-CONTEXT = "kubernetes-admin@cluster.local"
+CONTEXT = os.environ.get("DEPLOY_CONTEXT", "")
 NAMESPACE = "new-api"
 DIRECTORY = Path("/root/new-api-deploy")
 MYSQL_KEYS = {

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>New API 内部私有化方案</title>
+<style>
+body{max-width:1080px;margin:32px auto;padding:0 20px;font:16px/1.7 system-ui,sans-serif;color:#20242b;background:#fafafa}h1,h2{line-height:1.3}table{border-collapse:collapse;width:100%;margin:16px 0;background:white}th,td{border:1px solid #d4d8de;padding:10px;text-align:left;vertical-align:top}code{overflow-wrap:anywhere}a{color:#155cb4}.status{padding:12px;border-left:4px solid #916900;background:#fff7dd}
+</style>
+</head>
+<body>
+<h1>New API 内部私有化方案</h1>
+<p class="status">历史提案 · 2026-10-14 r1，2026-10-28归档。以下记录保留当时的方案、限制和待决事项，不代表当前部署或已实施决策。当前源码同步目标为 MindxMotion/new-api 的 mindxmotion 默认分支；没有按本提案创建独立私库，也不能据此认定生产入口已限制为内网。服务器、账号及实际渠道配置留在不入库的私有运维记录中。</p>
+<h2>历史事实（截至2026-10-14）</h2>
+<p>运行源码为 <code>5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>，本地分支
+<code>deploy/new-api-subpath-20261012</code> 的文档 HEAD 为
+<code>8d5abf8b05681d465c5548b555b16ff4e8b32fdc</code>。本地仓库尚未上传到独立私有仓库。
+2026-10-14 已执行只更新远端引用的 fetch；上游 main 固定到
+<code>7de10f2c602b50122017556e8a09cb7c488c273c</code>，提交日期为2026-10-13。
+相对于共同基线 <code>42e694eb60fe3191795c00d416571ced716eb9c4</code>，上游新增31项提交，
+98个文件发生变化；本地有5项独立提交。没有 merge 或改变线上镜像。</p>
+<p>当时的两项上游配置已通过 OpenAI 与 Anthropic 协议的真实请求；
+JSON 与 SSE 均200。实际供应商、渠道编号和模型映射仅保存在私有运维记录中；
+定向定价为两项缺失配置初始化，不是代码改动。
+这些渠道、定价、账号、固定密钥和数据须在升级后保留。对应运行证据由
+<a href="../../../installation/subpath/design.html">子路径合同</a>与
+<a href="../../../../deploy/production/design.html">部署记录</a>持有。</p>
+<h2>许可证边界</h2>
+<p><a href="../../../../LICENSE">LICENSE</a> 为 AGPLv3；
+<a href="../../../../NOTICE">NOTICE</a> 包含第7节的署名和修改标记要求。
+本次上游31项提交未改变这两个文件。AGPL允许使用和修改，不因非商业使用而免除义务。
+Private 仓库可以控制谁访问 GitHub，但不等同于给所有网络用户拒绝对应源码。</p>
+<p>修改版通过网络提供交互时，应向实际远程用户显著提供运行版本的 Corresponding Source
+获取机会。内部用户也不应被默认当作例外；使用一个位于相同内部访问边界下的源码下载，
+比要求所有使用者先获 GitHub 仓库权限更可靠。无需仅因采用 AGPL 就把仓库公开给全球，
+也无需默认向上游回传修改；获得源码者享有许可证赋予的再分发权，不能保证修改永不外流，
+也不能用额外 NDA 取消这些权利。关联组织、外包和发行安装包的具体边界应由法律负责人确认。</p>
+<p>保留 <code>Frontend design and development by New API contributors.</code>、
+原项目可见链接、修改版标记和许可证/第三方声明。业务功能与导航可以按需调整，
+但本项目的 New API 与 QuantumNous 身份、品牌、归属和法律署名必须保留，
+不能冒称从零原创。若目标变成不向用户提供源码的闭源服务，
+需另谈明确覆盖相关代码权利的商业许可，不把“内部/非商业”当作闭源授权。</p>
+<p>主要依据：<a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPLv3 第2、5、7、13节</a>、
+<a href="https://www.gnu.org/licenses/gpl-faq.html">GNU GPL FAQ</a>、
+<a href="https://github.com/QuantumNous/new-api/blob/7de10f2c602b50122017556e8a09cb7c488c273c/NOTICE">固定版本 NOTICE</a>。
+AGPL全文已从固定版本LICENSE核对；GNU站点直接读取受阻，FAQ搜索摘要存在不一致，
+不将摘要当作已验证豁免。源码必须包括生成、安装、运行和修改所需的非秘密源文件、
+控制脚本和配置模板，不能仅给上游源码或补丁；修改声明应带日期。这是实施约束说明，
+不是法律意见。</p>
+<p>历史许可不能混用：2026-01-26上游以标准AGPLv3替换旧的按用途双许可政策，
+2026-05-09加入当前NOTICE；旧政策中不得改变所有品牌/logo及特定商业场景的规则，
+不是本次最新LICENSE的文字。当前README提供另谈许可的联系渠道，不等于所有商业使用
+都必须付费，也不等于已经取得闭源许可。不要假定版权许可同时授予商标或官方背书权。</p>
+<p>GitHub官方
+<a href="https://docs.github.com/en/pull-requests/reference/forks">fork说明</a>
+确认公开仓库fork不能单独改可见性；采用
+<a href="https://docs.github.com/en/repositories/creating-and-managing-repositories/duplicating-a-repository">独立复制仓库</a>
+保留历史，而不是公开fork。官方mirror示例不应直接盲用于此工作树：未来只推明确核准的
+分支/tag，避免同步缓存refs、误删私库分支或触发未经审阅工作流。</p>
+<h2>方案选择与维护边界</h2>
+<table>
+<thead><tr><th>决策</th><th>推荐</th><th>不采用</th></tr></thead>
+<tbody>
+<tr><td>DEC-PRI-01 仓库</td><td>当时建议独立 Private 仓库，例如 <code>example-org/new-api-internal</code>，名称/owner待确认。保留完整上游历史；origin指向私库，upstream指向QuantumNous/new-api；私库main承载内部版本。此建议未实施。</td><td>直接把公开fork设为private：GitHub fork继承网络可见性限制。只复制压缩包且丢弃历史：后续同步和许可证追踪成本更高。</td></tr>
+<tr><td>DEC-PRI-02 同步</td><td>每次固定上游SHA，在新sync分支 merge 到内部版本，审阅后经内部PR进入main。已有发布提交不重写；安全修复可单独评估快速同步。第一次以7de10f2为候选，实施前再次fetch固定实际目标。</td><td>定时自动merge并部署；force push或重写生产提交；用上游文件覆盖整棵工作树。</td></tr>
+<tr><td>DEC-PRI-03 访问</td><td>真正内部使用优先VPN/专线，入口只接受内部网络，管理页、资源、API、WebSocket及源码下载使用一致边界。保留应用自身认证和独立MySQL/Redis。</td><td>仅将GitHub设private而应用仍全网可访问；仅隐藏登录入口；直接给机器API加浏览器SSO导致流式/客户端失效。</td></tr>
+<tr><td>DEC-PRI-04 外联</td><td>保留必要上游模型调用；默认关闭统计/性能遥测，更新检查和插件市场按管理员明确操作或本地镜像来源，首页外部图标本地化。以浏览器与Pod两层出站清单验证。</td><td>只限制Pod外联，忽略浏览器访问官方市场；一刀切封网破坏OAuth/模型接口；删除本地审计日志冒充隐私保护。</td></tr>
+<tr><td>DEC-PRI-05 源码与发布</td><td>每次发布固定源码/锁文件/构建说明对应归档，内部用户能下载；镜像使用私有registry+摘要或继续已验证离线交付，凭据不入镜像/归档。GitHub Actions人工发布、最小权限。</td><td>移除源码链接以隐藏修改；照搬上游release/publish工作流到私库后自动公开制品；把GitHub访问token嵌入前端。</td></tr>
+</tbody>
+</table>
+<h2>首次同步范围与风险</h2>
+<p>值得同步的变化包括：Anthropic thinking.block_binding 和多值 anthropic-beta 转发、
+relaykit 同时保留assistant文本与工具调用、请求体读取错误因果、流完成指标、日志导出、
+定价数组兼容、Sub2API余额查询，以及Web/Electron/Go依赖更新。
+这些是候选内容，不代表已在内部配置上通过验证。</p>
+<p>与本地改动重叠的路径有 <code>web/package.json</code>、
+<code>web/bun.lock</code>、Markdown测试和七项locale。
+不能接受整份上游锁文件后退本地24项漏洞修复；须同时保留双方有效修复、实际冻结安装，
+再确认依赖消费者解析。<code>node-forge</code> WVR-01不是永久豁免，需重新查询修复版本/
+公告并验证调用范围。合并没有文本冲突也不代表行为兼容。</p>
+<p>先用已有能力再加代码：<code>setting/task_plugin.go</code> 已支持配置市场来源列表，
+可使用显式 <code>[]</code> 禁用来源，或替换为内部索引；空字符串会回退官方默认源，
+不是禁用。统计/性能采样沿用现有环境开关。仅对仍自动外联的更新检查和首页外部图标
+做小范围改动，保留模型目录同步等明确管理员操作，不另造插件管理框架。</p>
+<p>最新上游给Token增加 <code>allow_user_quota_query</code> 字段：现有令牌保持关闭，
+新令牌默认开启。首次升级因此不能直接声明 schema-neutral。
+须在隔离MySQL8验证自动迁移、重复进入和新旧镜像兼容，并决定内部新令牌是否继续暴露
+所属用户总额度。保留旧镜像不代表一定可以回滚数据库；兼容性不成立时用前向修复。</p>
+<h2>实施顺序与验收</h2>
+<table>
+<thead><tr><th>需求 / 验收</th><th>最小切片</th><th>可观测结果</th></tr></thead>
+<tbody>
+<tr><td>REQ-PRI-01 / AC-PRI-01 可修改私库</td><td>S1：确定owner/name，完整历史和秘密扫描；创建独立private repo，审核工作流、团队权限、保护main；只push核准分支，不用--mirror盲推远端refs。</td><td>GitHub显示private，团队最小权限；LICENSE/NOTICE/第三方声明完整；全历史、构建输入与归档无生产秘密；未知工作流没有自动执行/发布。</td></tr>
+<tr><td>REQ-PRI-02 / AC-PRI-02 安全同步</td><td>S2：新sync分支merge固定上游SHA，解决锁文件、locale和测试重叠；上游日志/请求/Anthropic改动定向回归。</td><td>merge父提交可追踪，子路径/Cookie/代理/源码入口不回退；干净冻结安装、严格类型、根与前缀构建通过；审计新结果有明确处置。</td></tr>
+<tr><td>REQ-PRI-03 / AC-PRI-03 内部使用</td><td>S3：VPN/专线或既有内网网关限制统一入口；测试源码下载和机器API。</td><td>外部网络不能访问页面/资源/接口/WS/源码；已授权内部用户可登录、下载对应源码，GPT与Opus JSON/SSE可用。保留必要法律署名。</td></tr>
+<tr><td>REQ-PRI-04 / AC-PRI-04 外联可控</td><td>S4：本地图标、外部请求开关/明确操作和可用私有市场；建最小出站规则，不新造遥测框架。</td><td>首页、登录和控制台默认无官方市场/统计/外部图标请求；后台定时任务无未批准接收方；分别采集浏览器与后端流量，上游模型服务正常。</td></tr>
+<tr><td>REQ-PRI-05 / AC-PRI-05 持久和恢复</td><td>S5：隔离MySQL迁移证据、不可变构建、升级与验证；旧schema兼容时才能回切镜像。</td><td>现有渠道、密钥、定价、账号和选项保持；两协议JSON/SSE成功，临时令牌/会话撤销；运行镜像/源码散列一致，其他既有服务不受影响。</td></tr>
+</tbody>
+</table>
+<p>UX：REQUIRED，仅针对源码获取、内网访问拒绝及外联操作状态。UI reference：
+N/A，暂不做视觉重构；如新增控件再重开。Test design：REQUIRED，覆盖迁移、新令牌
+额度披露默认、两层网络边界、无外联证明和GPT/Opus真实协议。没有架构图：当前决策
+用上述边界表足够，不新增服务/依赖/镜像构建框架。</p>
+<h2>待确认与下一阶段</h2>
+<p>需确认私库owner/name、内部用户范围（员工/学生/外包是否包含）、已有VPN/专线入口，
+以及接受AGPL源码获取和再分发权。确认后只进入一次设计复审，将访问边界和测试合同定稿，
+再实施S1/S2；不把用户当前的“给方案”解释为授权push、建仓库或上线。</p>
+<p>记录：2026-10-14只读fetch与源码差异检查完成；安全审查此前未发现高置信度后门，
+但官方市场/第三方资源外联真实存在，不能以private仓库代替网络隐私控制。
+许可证及GitHub官方依据已核对并并入；方案方向可执行，owner/name和内部网络用户边界
+仍需实施前确认，因此状态保持NEEDS DECISION，不声明已经私有化或完成上游合并。</p>
+</body>
+</html>

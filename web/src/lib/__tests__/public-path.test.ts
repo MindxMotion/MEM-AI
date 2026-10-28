@@ -21,6 +21,7 @@ describe('public mount configuration', () => {
     ['/', ''],
     ['/new-api', '/new-api'],
     ['/new-api/', '/new-api'],
+    ['/mem-ai/', '/mem-ai'],
     ['/a_B/9-x/', '/a_B/9-x'],
   ])('canonicalizes %j without changing its boundary', (input, expected) => {
     expect(normalizeBasePath(input)).toBe(expected)
@@ -32,7 +33,7 @@ describe('public mount configuration', () => {
       vi.resetModules()
     })
 
-    it.each(['', '/new-api'])(
+    it.each(['', '/new-api', '/mem-ai'])(
       'mounts OAuth, affiliate and plugin browser URLs once for %j',
       async (prefix) => {
         vi.stubEnv('VITE_APP_BASE_PATH', prefix)

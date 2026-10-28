@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light">
+<title>AIMem Gateway · WorkBuddy 接入指南</title>
+<style>
+:root{--purple:#775094;--ink:#292236;--muted:#6f657b;--line:#e7e0ed;--soft:#f3eef8}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:#f8f6fb;color:var(--ink);font:15px/1.8 system-ui,"Microsoft YaHei",sans-serif}main{max-width:900px;margin:auto;padding:32px 20px 60px}a{color:var(--purple);text-underline-offset:4px}header{padding:34px;border-radius:20px;background:linear-gradient(125deg,#efe5f8,#f9f6fc);border:1px solid var(--line)}.eyebrow{color:var(--purple);letter-spacing:2px;font-size:12px;font-weight:700}h1{font-size:clamp(26px,4vw,38px);line-height:1.3;margin:14px 0}h2{font-size:21px;margin:0 0 16px}h3{font-size:16px;margin:22px 0 10px}p{margin:10px 0}.muted,footer{color:var(--muted);font-size:13px}nav{display:flex;gap:18px;flex-wrap:wrap;margin-top:22px;font-size:13px}section{margin-top:20px;padding:28px;background:white;border:1px solid var(--line);border-radius:16px}ol{padding-left:22px}li{padding:5px 0}code,pre{font-family:Consolas,monospace;font-size:13px}code{overflow-wrap:anywhere;background:var(--soft);padding:2px 5px;border-radius:4px}pre{background:#282035;color:#f1eafa;padding:18px;border-radius:10px;overflow:auto;line-height:1.8}pre code{background:none;padding:0;color:inherit}.base{display:block;font-size:15px;padding:14px;margin:12px 0;border:1px solid var(--line)}.note{padding:14px 18px;background:var(--soft);border-left:3px solid var(--purple);border-radius:0 8px 8px 0;font-size:14px}.warning{background:#fff8e8;border-color:#b58830}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:12px;border:1px solid var(--line);vertical-align:top}th{background:var(--soft)}footer{border-top:1px solid var(--line);padding-top:20px;margin-top:28px}a:focus-visible,summary:focus-visible{outline:3px solid var(--purple);outline-offset:4px}details{padding:10px 0}summary{cursor:pointer;font-weight:600}.back{display:inline-block;margin-bottom:20px;font-size:13px}
+@media(max-width:520px){main{padding:20px 12px 40px}header,section{padding:21px}table{min-width:510px}pre{font-size:12px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{body{background:white}main{max-width:none;padding:0}section{break-inside:avoid}nav,.back{display:none}pre{white-space:pre-wrap;overflow-wrap:anywhere}a{color:inherit}}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="../">← 返回 AIMem Gateway</a>
+<header>
+<div class="eyebrow">AIMEM GATEWAY / GET CONNECTED</div>
+<h1>把模型接入 WorkBuddy</h1>
+<p>一个 API 地址，一枚专用令牌。使用 OpenAI 兼容的 Chat Completions 接口。</p>
+<nav aria-label="文档章节"><a href="#prepare">准备令牌</a><a href="#configure">客户端配置</a><a href="#verify">独立验证</a><a href="#troubleshoot">排查问题</a></nav>
+</header>
+<section id="prepare">
+<h2>01 · 准备一枚专用令牌</h2>
+<ol>
+<li>打开网站并登录。首次使用请按站点提供的统一身份入口操作；普通自助注册可能未开放。</li>
+<li>进入控制台的「令牌」页面，创建名为 <code>WorkBuddy</code> 的专用令牌，设置适当的额度与有效期。</li>
+<li>复制 API Key，在客户端填写。不要把登录密码或管理员的个人访问令牌当作模型 API Key。</li>
+<li>在「模型广场」核对可用模型和当前价格；最终可访问范围以此令牌的 <code>GET /v1/models</code> 结果为准。</li>
+</ol>
+<p class="note">API Key 是可消费额度的凭据，不要发到群聊、截图、工单或公开仓库。泄露后立即撤销并重新创建。</p>
+</section>
+<section id="configure">
+<h2>02 · 在 WorkBuddy 中填写</h2>
+<p>打开「设置 → 模型 / 自定义模型」，选择自定义 OpenAI 兼容供应商。不同版本的菜单名称可能不同。</p>
+<p class="muted">Base URL（在当前网站打开本文时会自动显示完整地址）：</p>
+<code class="base" data-base>当前站点根路径 + /v1</code>
+<div class="table-wrap"><table>
+<thead><tr><th>配置项</th><th>填写内容</th></tr></thead>
+<tbody>
+<tr><td>名称</td><td>AIMem Gateway</td></tr>
+<tr><td>协议 / 接口类型</td><td>OpenAI Chat Completions</td></tr>
+<tr><td>Base URL</td><td><code data-base>当前站点根路径 + /v1</code></td></tr>
+<tr><td>API Key</td><td>控制台创建的模型 API 令牌</td></tr>
+<tr><td>模型 ID</td><td>从该令牌的 <code>/v1/models</code> 返回结果中复制，大小写和后缀保持一致</td></tr>
+</tbody></table></div>
+<p class="note">若客户端要求填写<strong>完整接口 URL</strong>，使用 <code data-chat>当前站点根路径 + /v1/chat/completions</code>。若要求 Base URL，则只填到 <code>/v1</code>，避免重复拼接为 <code>/v1/v1</code> 或两次 <code>chat/completions</code>。</p>
+<ol>
+<li>先使用默认参数测试一轮纯文本对话，确认连接与基本响应。</li>
+<li>需要流式输出时再开启流式；需要工具调用、图片输入或推理选项时，逐项启用并验证实际模型支持。不能假定同系列所有模型都支持全部能力。</li>
+<li>保存并重新打开对话；客户端仍使用旧配置时，完全退出并重启后再试。</li>
+</ol>
+<p class="muted">模型目录会随渠道状态变化。本文不固定模型总数、价格、上下文长度，也不把一次测试成功当作长期稳定性保证。</p>
+</section>
+<section id="verify">
+<h2>03 · 用独立请求区分配置与上游问题</h2>
+<p>下面是 macOS / Linux / Git Bash 的示例。先在本机设置 <code>GATEWAY_API_KEY</code> 与 <code>GATEWAY_MODEL</code> 环境变量，不要提交真实密钥到脚本仓库。</p>
+<h3>查询此令牌可用模型（不生成内容）</h3>
+<pre><code data-example="models">curl -sS -D - "$GATEWAY_BASE/models" \
+  -H "Authorization: Bearer $GATEWAY_API_KEY"</code></pre>
+<h3>一次最小对话（会产生实际调用费用）</h3>
+<pre><code data-example="chat">curl -sS -D - "$GATEWAY_BASE/chat/completions" \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"$GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"回复 OK\"}],\"stream\":false}"</code></pre>
+<p class="muted">需要检查流式时，将 <code>stream</code> 改为 <code>true</code> 并使用 <code>curl -N</code>。保留 HTTP 状态、响应中的请求 ID，以及流是否完整结束；不要分享 Authorization 请求头。</p>
+<h3>Python / OpenAI SDK</h3>
+<pre><code data-example="python">import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url=os.environ["GATEWAY_BASE"],
+    api_key=os.environ["GATEWAY_API_KEY"],
+    max_retries=0,  # 诊断时先关闭客户端自动重试，避免误判
+)
+response = client.chat.completions.create(
+    model=os.environ["GATEWAY_MODEL"],
+    messages=[{"role": "user", "content": "回复 OK"}],
+)
+print(response.choices[0].message.content)</code></pre>
+<p class="note warning">诊断时先关闭客户端自动重试，避免「客户端重发 × 网关重试」放大调用。已经收到部分输出或工具调用后，不要自动重放整次请求；超时也不一定表示上游没有执行。</p>
+</section>
+<section id="troubleshoot">
+<h2>04 · 遇到不稳定，保留这些信息</h2>
+<p><strong>发生时间（含时区）、模型 ID、接口路径、是否流式、客户端版本、HTTP / 流内错误码、请求 ID。</strong>若有客户端重试，提供每次请求 ID 与次数；无需提供提示词、对话正文或密钥。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>现象</th><th>优先检查</th></tr></thead>
+<tbody>
+<tr><td>401 / 403</td><td>令牌是否正确、有效，分组和模型权限是否允许；额度不足的具体响应以返回错误为准。</td></tr>
+<tr><td>404 / 无可用渠道</td><td>Base URL 拼接、模型拼写、令牌模型列表和当前启用渠道。前台有资料不代表一定可路由。</td></tr>
+<tr><td>400 / 不支持参数</td><td>先移除非必需的采样、推理与工具选项，使用最小文本请求复现；不要持续重试同一无效参数。</td></tr>
+<tr><td>429 / 502 / 503</td><td>可能是限流、容量或上游故障；保留请求 ID，交由管理员对齐渠道与尝试记录。不要高频连续重发。</td></tr>
+<tr><td>504 / 524 / 长时间等待</td><td>检查客户端、入口代理与上游超时；未知执行结果不宜盲目重放。</td></tr>
+<tr><td>HTTP 200，但输出中断</td><td>检查 SSE 错误事件、完整结束事件、客户端取消和连接断开。HTTP 200 不代表生成完整成功。</td></tr>
+</tbody></table></div>
+<details><summary>网关会自动换渠道或模型吗？</summary><p>只在配置的重试预算和规则允许时，网关才会对同一模型再次选路。严格会话绑定、固定渠道或已开始输出会限制安全重试。不会为掩盖故障而自动换成另一种模型；没有其它可用渠道时应返回明确错误。</p></details>
+<details><summary>什么可以证明接入稳定？</summary><p>「测试连接」只证明某次调用。稳定性需结合一段时间内同模型、同接口的成功率、耗时、错误类别和流结束状态分析。客户端自己的重试需要与网关尝试分别统计。</p></details>
+</section>
+<footer>
+<p>AIMem Gateway · WorkBuddy 接入指南 · 2026-10-26</p>
+<p>基于 <a href="https://github.com/QuantumNous/new-api" rel="noopener noreferrer" target="_blank">New API / QuantumNous</a>，AGPL-3.0。由用户提供的接入文档整理并纠正过期信息。</p>
+<p>管理员维护入口：系统设置 → 站点设置 → 文档链接；控制台的 API 入口卡片也可配置此链接。无需安装独立 Wiki 系统。</p>
+</footer>
+</main>
+<script>
+'use strict';
+if(location.protocol==='http:'||location.protocol==='https:'){
+ const marker='/guides/workbuddy.html';
+ const prefix=location.pathname.endsWith(marker)?location.pathname.slice(0,-marker.length):'';
+ const base=location.origin+prefix+'/v1';
+ document.querySelectorAll('[data-base]').forEach(element=>{element.textContent=base});
+ document.querySelectorAll('[data-chat]').forEach(element=>{element.textContent=base+'/chat/completions'});
+ document.querySelectorAll('[data-example]').forEach(element=>{
+  if(element.dataset.example==='python')element.textContent=element.textContent.replace('base_url=os.environ["GATEWAY_BASE"]','base_url='+JSON.stringify(base));
+  else element.textContent='export GATEWAY_BASE='+JSON.stringify(base)+'\n'+element.textContent;
+ });
+}
+</script>
+</body>
+</html>

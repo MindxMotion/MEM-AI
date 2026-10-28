@@ -85,6 +85,9 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
+		if system_setting.OIDCManagedByEnvironment() && strings.HasPrefix(k, "oidc.") {
+			continue
+		}
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
 			continue
 		}
@@ -106,6 +109,17 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	if system_setting.OIDCManagedByEnvironment() {
+		settings := system_setting.GetOIDCSettings()
+		for key, value := range map[string]string{
+			"enabled": strconv.FormatBool(settings.Enabled), "display_name": settings.GetEffectiveDisplayName(),
+			"client_id": settings.ClientId, "well_known": settings.WellKnown,
+			"authorization_endpoint": settings.AuthorizationEndpoint, "token_endpoint": settings.TokenEndpoint,
+			"user_info_endpoint": settings.UserInfoEndpoint, "managed_by_environment": "true",
+		} {
+			options = append(options, &model.Option{Key: "oidc." + key, Value: value})
+		}
+	}
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.
 	for key, values := range map[string]map[string]string{
@@ -184,6 +198,10 @@ func UpdateOption(c *gin.Context) {
 	err := common.DecodeJson(c.Request.Body, &option)
 	if err != nil {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+		return
+	}
+	if system_setting.OIDCManagedByEnvironment() && strings.HasPrefix(option.Key, "oidc.") {
+		common.ApiErrorStatus(c, http.StatusConflict, common.NewMessage("OIDC settings are managed by environment variables."))
 		return
 	}
 	switch option.Value.(type) {

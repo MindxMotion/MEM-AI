@@ -15,7 +15,7 @@
 只读根文件系统和限定资源运行；数据库专用普通账号仅拥有新数据库权限，TLS 校验
 服务器身份，重启后保留数据。若成立，专用实例是共享 RDS 的隔离替代，而不是 SQLite 回退。</p>
 <p>固定镜像：<code>mysql:8.4.8@sha256:4fc4bca5a26c5aa2246a92779d238bc2d34f0373e65dc083d7b635b02780dd3d</code>。
-环境：<code>kubernetes-admin@cluster.local</code>、<code>new-api</code>；
+环境：<code>example-context</code>、<code>new-api</code>；
 节点可分配 3.6 CPU、约 13.5 GiB 内存，当前磁盘可用 7.4 GiB。</p>
 <p>证明仅使用一个有截止时间的 Job、唯一标签的 deny-all 网络策略、临时磁盘和合成 TLS
 证书。没有 Service、公网入口、真实凭据、共享 RDS 访问或既有应用变更。

@@ -33,8 +33,11 @@ import {
   waitFor,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createInstance } from 'i18next'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import en from '@/i18n/locales/en.json'
+import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 import { Route as ModelsRoute } from '@/routes/_authenticated/system-settings/models/$section'
 import { Route as OperationsRoute } from '@/routes/_authenticated/system-settings/operations/$section'
@@ -47,6 +50,25 @@ import {
   defaultRequestPolicySettings,
   type RequestPolicySettings,
 } from '../defaults'
+import { policyLabel } from '../policy-label'
+
+it('localizes cancellation and committed-response retry stops when language changes', async () => {
+  const instance = createInstance()
+  await instance.init({ lng: 'zh', fallbackLng: 'en', resources: { en, zh } })
+  expect(policyLabel(instance.t, 'request_cancelled')).toBe(
+    '请求已取消，停止重试'
+  )
+  expect(policyLabel(instance.t, 'response_started')).toBe(
+    '响应已开始，停止重试'
+  )
+  await instance.changeLanguage('en')
+  expect(policyLabel(instance.t, 'request_cancelled')).toBe(
+    'Request cancelled; retry stopped'
+  )
+  expect(policyLabel(instance.t, 'response_started')).toBe(
+    'Response already started; retry stopped'
+  )
+})
 
 type PolicyBeforeLoad = (context: { params: { section: string } }) => void
 

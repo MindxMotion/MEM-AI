@@ -22,7 +22,7 @@ test("bounded application resources, restricted security and local credential ow
   assert.equal(deployment.spec.replicas, 1);
   assert.deepEqual(deployment.spec.strategy, { type: "Recreate" });
   assert.deepEqual(deployment.spec.selector.matchLabels, { "app.kubernetes.io/name": "new-api" });
-  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux", "kubernetes.io/hostname": "node1" });
+  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/arch": "amd64", "kubernetes.io/os": "linux" });
   assert.equal(pod.automountServiceAccountToken, false);
   assert.equal(pod.hostNetwork, false);
   assert.deepEqual(pod.securityContext, {
@@ -53,8 +53,8 @@ test("bounded application resources, restricted security and local credential ow
     assert.deepEqual(env[key], { secretKeyRef: { name: "new-api-app-auth", key } });
   }
   for (const [key, value] of Object.entries({
-    APP_BASE_PATH: "/new-api", SESSION_COOKIE_SECURE: "true",
-    SESSION_COOKIE_TRUSTED_URL: "https://thedoorofai.com", SSL_CERT_FILE: "/run/new-api-ca/mysql-ca.pem",
+    APP_BASE_PATH: "/mem-ai", SESSION_COOKIE_SECURE: "true",
+    SESSION_COOKIE_TRUSTED_URL: "https://gateway.example.com", SSL_CERT_FILE: "/run/new-api-ca/mysql-ca.pem",
     DEBUG: "false", DIFY_DEBUG: "false", GIN_MODE: "release", ENABLE_PPROF: "false",
     TLS_INSECURE_SKIP_VERIFY: "false", GENERATE_DEFAULT_TOKEN: "false",
     SQL_MAX_IDLE_CONNS: "2", SQL_MAX_OPEN_CONNS: "10", LOG_SQL_DSN: "",
@@ -90,7 +90,7 @@ test("actual manifest startup guard refuses SQLite, missing config and unsafe TL
       SQL_DSN: "new_api_app:fixture$(never-execute)@tcp(private.example:3306)/new_api?parseTime=true&tls=true",
       SESSION_SECRET: "a".repeat(64), CRYPTO_SECRET: "b".repeat(64),
       REDIS_CONN_STRING: `redis://new_api:${"c".repeat(64)}@new-api-redis.new-api.svc.cluster.local:6379/0`,
-      APP_BASE_PATH: "/new-api", SSL_CERT_FILE: caPath,
+      APP_BASE_PATH: "/mem-ai", SSL_CERT_FILE: caPath,
     };
     const syntax = spawnSync(bash, ["-n"], { input: app.args[0], encoding: "utf8", timeout: 10000 });
     assert.ifError(syntax.error);
@@ -102,7 +102,7 @@ test("actual manifest startup guard refuses SQLite, missing config and unsafe TL
       { SQL_DSN: valid.SQL_DSN.replace("new_api?", "shared?") },
       { SQL_DSN: valid.SQL_DSN.replace("new_api_app:", "root:") },
       { SESSION_SECRET: "" }, { CRYPTO_SECRET: valid.SESSION_SECRET },
-      { REDIS_CONN_STRING: "" }, { APP_BASE_PATH: "" }, { SSL_CERT_FILE: "/missing" },
+      { REDIS_CONN_STRING: "" }, { APP_BASE_PATH: "" }, { APP_BASE_PATH: "/mem-ai-other" }, { SSL_CERT_FILE: "/missing" },
     ];
     for (const [index, changes] of cases.entries()) {
       const result = spawnSync(bash, ["-ec", command], {
@@ -113,6 +113,12 @@ test("actual manifest startup guard refuses SQLite, missing config and unsafe TL
       assert.equal(result.stdout, index === 0 ? "STARTED\n" : "");
       assert.equal(result.stderr, index === 0 ? "" : "NEW_API_REQUIRED_CONFIG_INVALID\n");
     }
+    const legacy = spawnSync(bash, ["-ec", command], {
+      env: { ...process.env, ...valid, APP_BASE_PATH: "/new-api" }, encoding: "utf8", timeout: 10000,
+    });
+    assert.ifError(legacy.error);
+    assert.equal(legacy.status, 0, legacy.stderr);
+    assert.equal(legacy.stdout, "STARTED\n");
   } finally { rmSync(fixture, { recursive: true, force: true }); }
 });
 

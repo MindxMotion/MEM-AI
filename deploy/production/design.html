@@ -12,7 +12,7 @@
 </style>
 <body>
 <h1>New API 独立上线</h1>
-<p>在现有集群单独部署 New API，入口为 <code>https://thedoorofai.com/new-api/</code>。采用独立 MySQL 与独立 Redis；不接入 MindMotion 的用户、积分、凭据或业务数据。用户允许但不要求共享基础设施，专用 MySQL 可行性已采纳；RDS 资源和凭据保留但不使用。</p>
+<p>在现有集群单独部署 New API，入口为 <code>https://gateway.example.com/new-api/</code>。采用独立 MySQL 与独立 Redis；不接入 MindMotion 的用户、积分、凭据或业务数据。用户允许但不要求共享基础设施，专用 MySQL 可行性已采纳；RDS 资源和凭据保留但不使用。</p>
 <h2>当前运行状态 · 2026-10-15 · 上游余额</h2>
 <p>VERIFIED：运行源码 <code>91ce88174831b48748e90f7075739e6544276983</code>；
 公开源码分支 <code>MindxMotion/new-api:mindxmotion</code>。应用 manifest 为
@@ -22,7 +22,7 @@ config 为 <code>sha256:1505292c3fc8479ee0835169d71aa77ebd40cce35bbb73739a78ae82
 对应源码 SHA-256 <code>fa10e18fcf6eba5144174a24b34980dbf004d3356052cd71d94cf84dad6392f6</code>。
 本验收文档提交晚于运行源码；镜像和公开源码下载仍精确对应上述应用提交。</p>
 <p>只替换 new-api namespace 的 Deployment/new-api 镜像并加入私有余额来源配置，
-保留 kubernetes-admin@cluster.local、node1/linux/amd64、Never、两个 PVC 及 immutable Secret。
+保留 example-context、example-node/linux/amd64、Never、两个 PVC 及 immutable Secret。
 未更改 MySQL/Redis 工作负载、固定凭据、路由或数据库 schema。实际 Pod
 <code>new-api-77c9674df6-5hkrm</code> Ready；containerd imageID 的 repository alias 与应用名不同，
 但实际 manifest digest 完全一致。原校验器的 alias 误判经只读检查修正，无二次 apply 或 rollback。
@@ -80,8 +80,8 @@ HIGH。类型检查、147项定向测试、实际依赖消费者检查和子路�
 <p>镜像 tag 为 <code>new-api-subpath:5b9bbaa1e4021f3f4a871eb022f499ffecbfaf68</code>，
 config 摘要为 <code>sha256:7898b1fb780b9dcb7e4f139b4e8ba40c7871d083315cb126d273c83a6f830546</code>，
 交付归档 SHA-256 为 <code>8a791053b89afb9db67766c634f2fbaa549b5f8c86dd26b3cab1588230279525</code>。
-context 为 kubernetes-admin@cluster.local，namespace/workload 为 new-api。
-应用保留原 nodeSelector 的 node1/linux/amd64 与 Never，按实际 manifest 摘要部署，
+context 为 example-context，namespace/workload 为 new-api。
+应用保留原 nodeSelector 的 example-node/linux/amd64 与 Never，按实际 manifest 摘要部署，
 不把 config 摘要当作拉取身份。新 Pod 为 new-api-5855f7d6df-5pxzt。</p>
 <p>公共基础镜像层下载停滞，固定 Go SDK 的依赖下载也受阻。实际交付采用标准库离线工具，
 严格绑定已验证旧归档，只替换最终自有应用层，五个基础层逐字节保留；不追加重复应用层，
@@ -91,7 +91,7 @@ nodeSelector，在任何 apply 前停止；修正守卫以校验实际三项 sel
 apply和 rollout 通过。未降低节点约束。</p>
 <p>保留当前归档和 schema 兼容的0fd5350恢复归档/源码；不手工删除 containerd、kubelet
 或 PVC 数据。旧准备归档及测试镜像标记按精确名称清理，自有端口转发已结束。
-管理员为 newapi_admin，密码只在服务器受保护的 /root/new-api-deploy/operator.env；
+管理员账号与密码只在服务器受保护的 /root/new-api-deploy/operator.env；
 无公开注册或付费上游。分支仍为 deploy/new-api-subpath-20261012，没有上游 push、fork或PR。
 此验收文档可晚于运行源码提交；公开源码始终对应上述实际运行的5b9bbaa提交。</p>
 <h2>验收合同</h2>
@@ -130,7 +130,7 @@ crane mutate --platform linux/amd64 --append "../layer-${REV}.tar" --label "org.
 <h2>应用配置切片 · 2026-10-12</h2>
 <p>范围：DEP-02/03/04/05 的应用清单、受保护凭据供应及定向测试。此切片可实施；真实运行验收仍未完成，未使用 RDS 账号的权限不再是发布阻断。UX/UI 沿用上述 N/A 决策；独立测试设计 N/A，以下直接测试覆盖配置边界。新增 <code>application.json</code>（Kubernetes JSON List）、<code>application-secret.py</code> 和 <code>application.test.mjs</code>；未改 Redis、入口、运行源码或镜像封装。</p>
 <p>源码责任：<code>common/init.go</code> 的 <code>InitEnv</code> 从 SESSION_SECRET/CRYPTO_SECRET 读取固定独立密钥，缺省会随机生成或复用；<code>service/auth_token.go</code>、<code>common/crypto.go</code>、<code>service/task_artifact_access.go</code> 消费这些密钥。供应器因此只持久化这两个真实上游键。<code>model/main.go</code> 的 <code>chooseDB</code> 在 SQL_DSN 缺失或以 local 开头时使用 SQLite；清单启动守卫在执行 /new-api 前拒绝这种配置，要求 new_api_app、new_api 和 tls=true。供应器进一步验证 DSN 与私有 MySQL 字段一致、TLS/参数无重复或危险选项，并验证专用 Redis ACL/DB0 URL。不制造 MYSQL_*、ServerAddress 或注册控制环境变量。</p>
-<p>供应器仅接受显式 <code>python3 deploy/production/application-secret.py --apply</code>，可追加受保护的 <code>--credentials-file</code> 路径；缺省现在只读取 mysql.env，缺失就失败，绝不回退旧 RDS credentials.env。要求 root、固定 context <code>kubernetes-admin@cluster.local</code> 和已存在 namespace。所选凭据路径必须是 root:0700 的 <code>/root/new-api-deploy</code> 内规范绝对路径、直接子文件且以 .env 结尾；源 SSL_CERT_FILE 同样只允许该目录的直接 .pem 子文件。凭据、redis.env 与所选 CA 均须为 root:0600 普通单链接文件；拒绝相对路径、穿越、嵌套路径、符号链接、重复/缺失/未知键和无效 CA。逐行按首个等号解析，不 source/eval、不去掉密码中的括号或等号。完整 MYSQL_*、SQL_DSN 和 SSL_CERT_FILE 字面键合同保持不变，MYSQL_SSL_MODE 元数据仅接受 true、VERIFY_IDENTITY 或 verify-full；SQL_DSN 必须实际带 tls=true。若现有受保护包不符合此合同，私下核对，不静默转换或降低验证。</p>
+<p>供应器仅接受显式 <code>python3 deploy/production/application-secret.py --apply</code>，可追加受保护的 <code>--credentials-file</code> 路径；缺省现在只读取 mysql.env，缺失就失败，绝不回退旧 RDS credentials.env。要求 root、固定 context <code>example-context</code> 和已存在 namespace。所选凭据路径必须是 root:0700 的 <code>/root/new-api-deploy</code> 内规范绝对路径、直接子文件且以 .env 结尾；源 SSL_CERT_FILE 同样只允许该目录的直接 .pem 子文件。凭据、redis.env 与所选 CA 均须为 root:0600 普通单链接文件；拒绝相对路径、穿越、嵌套路径、符号链接、重复/缺失/未知键和无效 CA。逐行按首个等号解析，不 source/eval、不去掉密码中的括号或等号。完整 MYSQL_*、SQL_DSN 和 SSL_CERT_FILE 字面键合同保持不变，MYSQL_SSL_MODE 元数据仅接受 true、VERIFY_IDENTITY 或 verify-full；SQL_DSN 必须实际带 tls=true。若现有受保护包不符合此合同，私下核对，不静默转换或降低验证。</p>
 <p>新固定密钥以独占硬链接发布到 root:0600 的 application.env，在任何 API 写入前落盘。供应器只创建 immutable Secret <code>new-api-app-auth</code>（SQL_DSN、REDIS_CONN_STRING、SESSION_SECRET、CRYPTO_SECRET）和 immutable ConfigMap <code>new-api-mysql-ca</code>（mysql-ca.pem，公开 CA，无账号凭据）。所有 JSON 通过 kubectl stdin 发送；不输出资源或 API 原始错误，不把值放入参数。重试先私下比对名称、namespace、所有者标签、immutable 和内容；漂移、权限拒绝或响应不确定均停止，不 apply/patch/delete、不自动轮换或覆盖。保留 application.env，包括仅 CA 创建成功或 API 已接受 Secret 但响应丢失的情况；私下恢复一致性后重试。原 RDS/Redis 包保持不变。</p>
 <p>清单先列网络策略再列应用：单副本 Recreate、linux/amd64、UID/GID/fsGroup 10001、只读根文件系统、drop ALL、RuntimeDefault、无 ServiceAccount token、无 hostNetwork/hostPort。专用 512Mi RWO PVC 显式选择已证明存在的 local-path 存储类并挂 /data：<code>common/init.go</code>/<code>logger/logger.go</code> 的 /data/logs 留在该卷；<code>common/disk_cache.go</code>/<code>common/utils.go</code> 默认临时写入走有 256Mi 限制的 /tmp emptyDir。专用 CA 以只读 0444 挂载，运行时 SSL_CERT_FILE 为 /run/new-api-ca/mysql-ca.pem，无需改运行源码。实际卷属组及写入行为仍属运行验收；不以此配置声明所有插件/提供商写入路径已验证。</p>
 <p>原生 startup/readiness/liveness 使用 <code>router/api-router.go</code> 注册的无认证 <code>controller.GetStatus</code>，直连后端路径 /api/status、端口 3000，不带公开前缀。startup 给数据库迁移最多约十分钟；这只是进程/HTTP 健康，不持续验证 MySQL/Redis，也不是登录可用性证据。Service 仅 ClusterIP。Ingress-only NetworkPolicy 使用父任务最新只读证明的同一 from 条目：namespace=apisix AND app.kubernetes.io/instance=apisix AND app.kubernetes.io/name=apisix，当前选择一个 Pod，仅允许 TCP3000；没有声明 egress 隔离。父任务仍须证明实际连通/拒绝、CNI 执行策略及网关非 hostNetwork。不能把 namespace/pod 选择器拆成 OR 条目，也不能用空选择器放开。</p>
@@ -138,12 +138,12 @@ crane mutate --platform linux/amd64 --append "../layer-${REV}.tar" --label "org.
 <ol>
 <li>数据库固定采用专用 MySQL；按下节供应和启动它，确认普通账号最小权限及 TLS，再供应应用。正式 Redis 及其保护包由既有 Redis 流程负责。应用供应器不创建数据库资源、不读取共享应用 Secret、不启动 Redis。</li>
 <li>父任务在获准执行阶段运行上述 --apply；失败只私下比对资源与保留包，不删除密钥来“重试”。完成镜像交付及非秘密 application.json 服务端 dry-run，执行节点自由空间预检；应用网络策略应先创建并确认，再启动私有工作负载，不同时应用公网入口。备份或额外 owner handoff 批准不作为此前置条件。</li>
-<li>经 loopback-only port-forward 和父任务受限 TLS 前缀代理做私有初始化，保持真实 https://thedoorofai.com Origin 与 /new-api 前缀/strip 语义；直接 localhost 明文页面不证明 Secure Cookie 可用。管理员密码仅在私有 TLS 浏览器输入，不能进入跟踪文件、日志、录屏或 CLI 参数。初始化后用受认证设置保存 <code>ServerAddress=https://thedoorofai.com/new-api</code>、<code>RegisterEnabled=false</code>、<code>PasswordRegisterEnabled=false</code>，关闭 demo，核验重启持久性；保持无付费上游/充值/自动初始令牌。设置由 <code>controller/setup.go</code>、<code>controller/option.go</code> 和 <code>model/option.go</code> 拥有，不伪造 env。</li>
+<li>经 loopback-only port-forward 和父任务受限 TLS 前缀代理做私有初始化，保持真实 https://gateway.example.com Origin 与 /new-api 前缀/strip 语义；直接 localhost 明文页面不证明 Secure Cookie 可用。管理员密码仅在私有 TLS 浏览器输入，不能进入跟踪文件、日志、录屏或 CLI 参数。初始化后用受认证设置保存 <code>ServerAddress=https://gateway.example.com/new-api</code>、<code>RegisterEnabled=false</code>、<code>PasswordRegisterEnabled=false</code>，关闭 demo，核验重启持久性；保持无付费上游/充值/自动初始令牌。设置由 <code>controller/setup.go</code>、<code>controller/option.go</code> 和 <code>model/option.go</code> 拥有，不伪造 env。</li>
 <li>父任务验证实际 MySQL/Redis 启动、非 root/read-only 卷写入、重启后的设置/密钥、Cookie 发行/删除、真实登录、源码下载、边界路由、流式/WebSocket 以及 APISIX 允许/其他来源拒绝后，才另行决定公网入口。失败撤下新入口/应用，保留专用 PVC 和固定凭据用于恢复；不动共享服务，不自动删除数据库。</li>
 </ol>
 <p>定向证据（基于 HEAD 37dcccf85f0579e9da2e565291100e5a8741c90b）：<code>node --test deploy/production/application.test.mjs</code> 3/3 通过，包含 7 个 Python unittest 方法；覆盖资源/安全/CA/路径及同项 AND 选择器、实际 bash 启动守卫、Python stdlib 字面解析/所有权拒绝/漂移/独占发布/不轮换/不确定响应保留。Python AST 语法检查及 <code>git diff --check</code> 通过。Windows 命令夹具使用 <code>C:\Program Files\Git\bin\bash.exe</code>；供应器要求 Linux Python 3.9+，Python 夹具模拟 Linux ownership、CA 加载和 API 边界，不替代生产 Linux 与真实 Kubernetes 验证。无参数执行供应器返回 1 且无副作用。OWASP Authentication / Session Management Cheat Sheets 的 TLS、Secure Cookie、CSPRNG 密钥、限制 Path 与不记录凭据原则适用于此配置；没有改认证算法，也不声明 ASVS 或同域浏览器隔离合规。实机/edge 验收及权限阻断仍由父任务持有。</p>
 <h3>拓扑与可选凭据包修订 · 2026-10-12 16:34</h3>
-<p>当时父任务只读证据：context 与供应器固定值一致；node1 allocatable 为 CPU3600m / 约13.5Gi 内存，这不是剩余可调度资源；root/containerd 磁盘余7.4Gi。local-path 使用 rancher.io/local-path、回收策略 Delete；PVC 请求不证明空间预留或写入硬上限，删除 PVC 可能删除数据。DMS ListInstances 成功但无注册 RDS 实例，不证明存在可用 SQL 管理员。后续专用 MySQL ADOPT 已取代共享账号方案，最新镜像缓存后自由空间为6.3Gi；旧读数不作为部署容量保证。</p>
+<p>当时父任务只读证据：context 与供应器固定值一致；example-node allocatable 为 CPU3600m / 约13.5Gi 内存，这不是剩余可调度资源；root/containerd 磁盘余7.4Gi。local-path 使用 rancher.io/local-path、回收策略 Delete；PVC 请求不证明空间预留或写入硬上限，删除 PVC 可能删除数据。DMS ListInstances 成功但无注册 RDS 实例，不证明存在可用 SQL 管理员。后续专用 MySQL ADOPT 已取代共享账号方案，最新镜像缓存后自由空间为6.3Gi；旧读数不作为部署容量保证。</p>
 <p>本次定向验证：<code>node --test deploy/production/application.test.mjs</code> 3/3 通过，含 9 个 Python unittest 方法，新增显式 mysql.env/CA 选择、路径拒绝、CLI 重复/缺参拒绝，以及切换凭据造成漂移时保留固定密钥、不覆盖资源的测试。Python AST 与 <code>git diff --check</code> 通过。改动仍仅应用清单、供应器、测试及此部署 HTML；没有执行 --apply、应用工作负载或开放公网入口。</p>
 <h3>低用户测试服务容量与连接池修订 · 2026-10-12 16:40</h3>
 <p>应用 PVC 从 5Gi 改为 512Mi。当前 source-owned /data 写入只需容纳服务日志：<code>common/init.go</code> 创建日志目录，<code>main.go</code> 调用 <code>logger.SetupLogger</code>，后者在 /data/logs 追加日志。MySQL 存放账号、选项和业务/审计记录，不在此卷建 SQLite；启动守卫保持拒绝 SQLite 回退。<code>common/pprof.go</code> 的工作目录 profile 写入对应 ENABLE_PPROF，清单保持 false；默认缓存路径为空且磁盘请求体缓存关闭（<code>common/disk_cache_config.go</code>、<code>setting/performance_setting/config.go</code>），临时文件走 /tmp。没有源码证据要求 5Gi 最低容量，因此选所请求范围内最小的 512Mi，而非为低用户测试预留长期归档空间。</p>
@@ -178,8 +178,8 @@ crane mutate --platform linux/amd64 --append "../layer-${REV}.tar" --label "org.
 九项相关认证、OAuth 会话绑定及 Origin 检查在无真实凭据的 Linux Job 中通过。
 过宽认证选择器曾超过 100 秒预算，未记为通过。正式 MySQL 入口、持久卷、应用迁移和公网
 验收仍须以实际运行结果判定。</p>
-<p>离线交付约束：应用镜像先按 SHA-256 校验并导入 node1 的 containerd，再注册经过验证的
-manifest 摘要别名。应用固定到 node1，使用 <code>imagePullPolicy=Never</code>；
+<p>离线交付约束：应用镜像先按 SHA-256 校验并导入 example-node 的 containerd，再注册经过验证的
+manifest 摘要别名。应用固定到 example-node，使用 <code>imagePullPolicy=Never</code>；
 不能用 Always 向未发布的镜像仓库重新拉取。缺少本地镜像应明确失败，不回退可变标签。
 MySQL 与 Redis 仍按其固定官方摘要使用缓存或正常拉取。</p>
 </body>

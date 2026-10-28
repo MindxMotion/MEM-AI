@@ -4,18 +4,25 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // accessTokenExemptRoutes are /api routes that never reach dashboard
@@ -55,6 +62,10 @@ var accessTokenExemptRoutes = []string{
 	"POST /api/user/auth/refresh",
 	"POST /api/user/auth/logout",
 
+	// Dedicated service client authentication, never dashboard sessions or PATs.
+	"POST /api/integration/v1/token",
+	"GET /api/integration/v1/balance",
+
 	// Payment callbacks.
 	"POST /api/stripe/webhook",
 	"POST /api/creem/webhook",
@@ -93,6 +104,91 @@ func newAccessTokenScopeTestEngine(t *testing.T) *gin.Engine {
 		SetTaskRouter(engine)
 	})
 	return engine
+}
+
+func TestLogExportRoutesEnforceRoleScopeAndUserIsolation(t *testing.T) {
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	previousRedis, previousMaster := common.RedisEnabled, common.IsMasterNode
+	previousExport := operation_setting.GetLogSetting().UserExportEnabled
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.AuditLog{}, &model.UserAccessToken{},
+		&model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.Channel{}, &model.Log{}))
+	model.DB, model.LOG_DB = db, db
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled, common.IsMasterNode = false, true
+	operation_setting.GetLogSetting().UserExportEnabled = true
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
+	require.NoError(t, authz.Init(db))
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.SetDatabaseTypes(previousMain, previousLog)
+		common.RedisEnabled, common.IsMasterNode = previousRedis, previousMaster
+		operation_setting.GetLogSetting().UserExportEnabled = previousExport
+	})
+	for _, user := range []model.User{
+		{Id: 101, Username: "export-alice", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "export-alice"},
+		{Id: 102, Username: "export-bob", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "export-bob"},
+		{Id: 103, Username: "export-admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "export-admin"},
+	} {
+		require.NoError(t, db.Create(&user).Error)
+	}
+	for _, log := range []model.Log{
+		{UserId: 101, Username: "export-alice", CreatedAt: time.Now().Unix(), Type: model.LogTypeConsume, RequestId: "alice-export", Other: `{"admin_info":{"fixture":"admin-only"}}`},
+		{UserId: 102, Username: "export-bob", CreatedAt: time.Now().Unix(), Type: model.LogTypeConsume, RequestId: "bob-export"},
+	} {
+		require.NoError(t, db.Create(&log).Error)
+	}
+	engine := newAccessTokenScopeTestEngine(t)
+	for _, tc := range []struct {
+		name, path, scope string
+		userID, status    int
+		all               bool
+	}{
+		{"anonymous self export", "/api/log/self/export", "", 0, http.StatusUnauthorized, false},
+		{"anonymous all export", "/api/log/export", "", 0, http.StatusUnauthorized, false},
+		{"ordinary user cannot export others", "/api/log/export", "log:read", 101, http.StatusForbidden, false},
+		{"self export requires usage scope", "/api/log/self/export", "profile:read", 101, http.StatusForbidden, false},
+		{"admin all export requires log scope", "/api/log/export", "usage:read", 103, http.StatusForbidden, false},
+		{"self export ignores another user selector", "/api/log/self/export?user_id=102&username=export-bob", "usage:read", 101, http.StatusOK, false},
+		{"admin exports all users with log scope", "/api/log/export", "log:read", 103, http.StatusOK, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			if tc.userID != 0 {
+				suffix, err := common.GenerateRandomCharsKey(43)
+				require.NoError(t, err)
+				raw := model.AccessTokenPrefix + suffix
+				token := &model.UserAccessToken{Name: "export-fixture", TokenHash: model.AccessTokenFingerprint(raw),
+					TokenHint: model.AccessTokenHint(raw), ExpiresAt: time.Now().Unix() + 3600}
+				require.NoError(t, token.SetScopes([]string{tc.scope}))
+				require.NoError(t, model.CreateUserAccessToken(tc.userID, token, service.AccessTokenMaxPerUser))
+				request.Header.Set("Authorization", "Bearer "+raw)
+			}
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			require.Equal(t, tc.status, response.Code, response.Body.String())
+			if tc.status != http.StatusOK {
+				assert.NotContains(t, response.Body.String(), "alice-export")
+				assert.NotContains(t, response.Body.String(), "bob-export")
+				return
+			}
+			assert.Contains(t, response.Header().Get("Content-Type"), "application/x-ndjson")
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Contains(t, response.Body.String(), "alice-export")
+			assert.Contains(t, response.Body.String(), `"success":true`)
+			if tc.all {
+				assert.Contains(t, response.Body.String(), "bob-export")
+				assert.Contains(t, response.Body.String(), "admin-only")
+				assert.Contains(t, response.Body.String(), `"count":2`)
+			} else {
+				assert.NotContains(t, response.Body.String(), "bob-export")
+				assert.NotContains(t, response.Body.String(), "admin-only")
+				assert.Contains(t, response.Body.String(), `"count":1`)
+			}
+		})
+	}
 }
 
 func TestAccessTokenRouteRulesCoverEveryDashboardRoute(t *testing.T) {

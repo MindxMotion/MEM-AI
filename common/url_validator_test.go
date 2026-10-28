@@ -135,7 +135,8 @@ func resetSessionCookieSettingsAfterTest(t *testing.T) {
 
 func TestAppBasePathCookieSettings(t *testing.T) {
 	for _, tc := range []struct{ input, prefix string }{
-		{"", ""}, {"/", ""}, {"/new-api", "/new-api"}, {"/new-api/", "/new-api"}, {"/a_B/9-x/", "/a_B/9-x"},
+		{"", ""}, {"/", ""}, {"/new-api", "/new-api"}, {"/new-api/", "/new-api"},
+		{"/mem-ai", "/mem-ai"}, {"/mem-ai/", "/mem-ai"}, {"/a_B/9-x/", "/a_B/9-x"},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			resetSessionCookieSettingsAfterTest(t)

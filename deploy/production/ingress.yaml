@@ -8,8 +8,25 @@ metadata:
 spec:
   http:
     - name: canonical-entry
+      priority: 20
       match:
-        hosts: [thedoorofai.com]
+        hosts: [gateway.example.com]
+        paths: [/mem-ai]
+        methods: [GET, HEAD]
+      backends:
+        - serviceName: new-api
+          servicePort: 3000
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            uri: https://gateway.example.com/mem-ai/
+            ret_code: 308
+            append_query_string: true
+    - name: legacy-entry
+      priority: 20
+      match:
+        hosts: [gateway.example.com]
         paths: [/new-api]
         methods: [GET, HEAD]
       backends:
@@ -19,14 +36,49 @@ spec:
         - name: redirect
           enable: true
           config:
-            uri: https://thedoorofai.com/new-api/
-            ret_code: 308
+            uri: https://gateway.example.com/mem-ai/
+            ret_code: 302
             append_query_string: true
+        - name: response-rewrite
+          enable: true
+          config:
+            headers:
+              set:
+                Cache-Control: no-store
+                Referrer-Policy: no-referrer
+    - name: legacy-console
+      priority: 10
+      match:
+        hosts: [gateway.example.com]
+        paths: [/new-api/*]
+        methods: [GET, HEAD]
+        exprs:
+          - subject:
+              scope: Path
+            op: RegexNotMatch
+            value: '^/new-api/(?:(?:api|v1|v1beta|mj|pg|static|assets)(?:/|$)|[^/]+/mj(?:/|$)|dashboard/billing(?:/|$)|source(?:/|\.tar\.gz$|$))'
+      backends:
+        - serviceName: new-api
+          servicePort: 3000
+      plugins:
+        - name: redirect
+          enable: true
+          config:
+            regex_uri: ['^/new-api/(.*)$', 'https://gateway.example.com/mem-ai/$1']
+            ret_code: 302
+            append_query_string: true
+        - name: response-rewrite
+          enable: true
+          config:
+            headers:
+              set:
+                Cache-Control: no-store
+                Referrer-Policy: no-referrer
     - name: application
       websocket: true
       match:
-        hosts: [thedoorofai.com]
-        paths: [/new-api/*]
+        hosts: [gateway.example.com]
+        paths: [/mem-ai/*, /new-api/*]
       backends:
         - serviceName: new-api
           servicePort: 3000
@@ -39,15 +91,15 @@ spec:
         - name: proxy-rewrite
           enable: true
           config:
-            regex_uri: ['^/new-api/(.*)$', '/$1']
+            regex_uri: ['^/(?:mem-ai|new-api)/(.*)$', '/$1']
         - name: response-rewrite
           enable: true
           config:
             vars:
-              - [upstream_http_location, '~~', '^/(?!/|new-api(?:[/?#]|$))']
+              - [upstream_http_location, '~~', '^/(?!/|(?:mem-ai|new-api)(?:[/?#]|$))']
             headers:
               set:
-                Location: '/new-api$upstream_http_location'
+                Location: '/mem-ai$upstream_http_location'
       timeout:
         connect: 10s
         send: 30s

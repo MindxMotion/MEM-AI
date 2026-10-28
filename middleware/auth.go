@@ -207,6 +207,9 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 	if !ok {
 		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
+	if service.IsIntegrationCredential(raw) {
+		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, service.ErrAuthTokenInvalid
+	}
 	identity, internal, err := service.ParseDashboardAccessToken(raw)
 	if internal {
 		if err != nil {
@@ -467,6 +470,11 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
 			key = strings.TrimSpace(key[7:])
 		}
+		if service.IsIntegrationCredential(key) {
+			common.ApiErrorStatus(c, http.StatusUnauthorized, errors.New(common.TranslateMessage(c, i18n.MsgTokenInvalid)))
+			c.Abort()
+			return
+		}
 		key = strings.TrimPrefix(key, "sk-")
 		parts := strings.Split(key, "-")
 		key = parts[0]
@@ -547,10 +555,18 @@ func TokenAuth() func(c *gin.Context) {
 			if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
 				key = strings.TrimSpace(key[7:])
 			}
+			if service.IsIntegrationCredential(key) {
+				abortWithOpenAiMessage(c, http.StatusUnauthorized, common.TranslateMessage(c, i18n.MsgTokenInvalid))
+				return
+			}
 			key = strings.TrimPrefix(key, "sk-")
 			parts = strings.Split(key, "-")
 			key = parts[0]
 		} else {
+			if service.IsIntegrationCredential(key) {
+				abortWithOpenAiMessage(c, http.StatusUnauthorized, common.TranslateMessage(c, i18n.MsgTokenInvalid))
+				return
+			}
 			key = strings.TrimPrefix(key, "sk-")
 			parts = strings.Split(key, "-")
 			key = parts[0]
