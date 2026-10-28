@@ -39,6 +39,7 @@ func TestClassifyRelayOutcome(t *testing.T) {
 		{"unavailable channel", context.Background(), types.NewErrorWithStatusCode(errors.New("disabled"), types.ErrorCodeGetChannelFailed, 403), OutcomeFailure},
 		{"empty upstream response", context.Background(), types.NewError(errors.New("empty"), types.ErrorCodeEmptyResponse), OutcomeFailure},
 		{"network failure", context.Background(), types.NewOpenAIError(errors.New("connection refused"), types.ErrorCodeDoRequestFailed, 500), OutcomeFailure},
+		{"connection closed after non-stream response", canceled, nil, OutcomeSuccess},
 		{"client cancellation", canceled, types.NewOpenAIError(errors.New("context canceled"), types.ErrorCodeDoRequestFailed, 500), OutcomeIgnored},
 		{"upstream deadline", context.Background(), types.NewOpenAIError(context.DeadlineExceeded, types.ErrorCodeDoRequestFailed, 504), OutcomeFailure},
 	} {
@@ -50,23 +51,27 @@ func TestClassifyRelayOutcome(t *testing.T) {
 }
 
 func TestStreamOutcomeClassification(t *testing.T) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
 	for _, tc := range []struct {
-		name string
-		mark func(*relaycommon.StreamStatus)
-		end  relaycommon.StreamEndReason
-		want Outcome
+		name         string
+		mark         func(*relaycommon.StreamStatus)
+		end          relaycommon.StreamEndReason
+		want         Outcome
+		wantCanceled Outcome
 	}{
-		{"completed", (*relaycommon.StreamStatus).MarkCompleted, relaycommon.StreamEndReasonEOF, OutcomeSuccess},
-		{"business rejection", func(s *relaycommon.StreamStatus) { s.MarkFailed("context_length_exceeded", "", 0) }, relaycommon.StreamEndReasonEOF, OutcomeIgnored},
-		{"service error", func(s *relaycommon.StreamStatus) { s.MarkFailed("server_error", "", 0) }, relaycommon.StreamEndReasonEOF, OutcomeFailure},
-		{"error after completion", func(s *relaycommon.StreamStatus) { s.MarkCompleted(); s.MarkFailed("", "server_error", 0) }, relaycommon.StreamEndReasonEOF, OutcomeFailure},
-		{"output limit", func(s *relaycommon.StreamStatus) { s.MarkIncomplete("max_output_tokens") }, relaycommon.StreamEndReasonEOF, OutcomeSuccess},
-		{"content filter", func(s *relaycommon.StreamStatus) { s.MarkIncomplete("content_filter") }, relaycommon.StreamEndReasonEOF, OutcomeIgnored},
-		{"client cancel", (*relaycommon.StreamStatus).MarkCancelled, relaycommon.StreamEndReasonEOF, OutcomeIgnored},
-		{"client gone", nil, relaycommon.StreamEndReasonClientGone, OutcomeIgnored},
-		{"timeout", nil, relaycommon.StreamEndReasonTimeout, OutcomeFailure},
-		{"missing terminal", nil, relaycommon.StreamEndReasonEOF, OutcomeFailure},
-		{"done marker without terminal", nil, relaycommon.StreamEndReasonDone, OutcomeSuccess},
+		{"completed", (*relaycommon.StreamStatus).MarkCompleted, relaycommon.StreamEndReasonEOF, OutcomeSuccess, OutcomeSuccess},
+		{"completed with done marker", (*relaycommon.StreamStatus).MarkCompleted, relaycommon.StreamEndReasonDone, OutcomeSuccess, OutcomeSuccess},
+		{"business rejection", func(s *relaycommon.StreamStatus) { s.MarkFailed("context_length_exceeded", "", 0) }, relaycommon.StreamEndReasonEOF, OutcomeIgnored, OutcomeIgnored},
+		{"service error", func(s *relaycommon.StreamStatus) { s.MarkFailed("server_error", "", 0) }, relaycommon.StreamEndReasonEOF, OutcomeFailure, OutcomeIgnored},
+		{"error after completion", func(s *relaycommon.StreamStatus) { s.MarkCompleted(); s.MarkFailed("", "server_error", 0) }, relaycommon.StreamEndReasonEOF, OutcomeFailure, OutcomeIgnored},
+		{"output limit", func(s *relaycommon.StreamStatus) { s.MarkIncomplete("max_output_tokens") }, relaycommon.StreamEndReasonEOF, OutcomeSuccess, OutcomeIgnored},
+		{"content filter", func(s *relaycommon.StreamStatus) { s.MarkIncomplete("content_filter") }, relaycommon.StreamEndReasonEOF, OutcomeIgnored, OutcomeIgnored},
+		{"client cancel", (*relaycommon.StreamStatus).MarkCancelled, relaycommon.StreamEndReasonEOF, OutcomeIgnored, OutcomeIgnored},
+		{"client gone", nil, relaycommon.StreamEndReasonClientGone, OutcomeIgnored, OutcomeIgnored},
+		{"timeout", nil, relaycommon.StreamEndReasonTimeout, OutcomeFailure, OutcomeIgnored},
+		{"missing terminal", nil, relaycommon.StreamEndReasonEOF, OutcomeFailure, OutcomeIgnored},
+		{"done marker without terminal", nil, relaycommon.StreamEndReasonDone, OutcomeSuccess, OutcomeIgnored},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stream := relaycommon.NewStreamStatus()
@@ -75,7 +80,9 @@ func TestStreamOutcomeClassification(t *testing.T) {
 				tc.mark(stream)
 			}
 			stream.SetEndReason(tc.end, nil)
-			assert.Equal(t, tc.want, ClassifyRelayOutcome(context.Background(), &relaycommon.RelayInfo{StreamStatus: stream}, nil))
+			info := &relaycommon.RelayInfo{IsStream: true, StreamStatus: stream}
+			assert.Equal(t, tc.want, ClassifyRelayOutcome(context.Background(), info, nil))
+			assert.Equal(t, tc.wantCanceled, ClassifyRelayOutcome(canceled, info, nil))
 		})
 	}
 }
