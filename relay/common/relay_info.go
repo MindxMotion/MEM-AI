@@ -22,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type ThinkingContentInfo struct {
@@ -1140,6 +1141,35 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 		return jsonData, nil
 	}
 	if !hasRemovableDisabledField(jsonData, channelOtherSettings) {
+		return jsonData, nil
+	}
+	if channelOtherSettings.ClaudeBedrockCompat {
+		// Keep opaque Claude fields and large integers intact in this opt-in
+		// path. The native/off filtering behavior below remains unchanged.
+		for _, field := range []struct {
+			path  string
+			allow bool
+		}{
+			{"service_tier", channelOtherSettings.AllowServiceTier},
+			{"inference_geo", channelOtherSettings.AllowInferenceGeo},
+			{"speed", channelOtherSettings.AllowSpeed},
+			{"store", !channelOtherSettings.DisableStore},
+			{"safety_identifier", channelOtherSettings.AllowSafetyIdentifier},
+			{"stream_options.include_obfuscation", channelOtherSettings.AllowIncludeObfuscation},
+		} {
+			if !field.allow {
+				var err error
+				jsonData, err = sjson.DeleteBytes(jsonData, field.path)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if !channelOtherSettings.AllowIncludeObfuscation {
+			if value := gjson.GetBytes(jsonData, "stream_options"); value.IsObject() && len(value.Map()) == 0 {
+				return sjson.DeleteBytes(jsonData, "stream_options")
+			}
+		}
 		return jsonData, nil
 	}
 

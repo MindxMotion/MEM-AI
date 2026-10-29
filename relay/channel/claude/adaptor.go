@@ -33,6 +33,9 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if err := ValidateBedrockCompatibility(c, info); err != nil {
+		return nil, err
+	}
 	if request.MaxTokens != nil && *request.MaxTokens == 0 {
 		request.MaxTokens = nil
 	}
@@ -48,6 +51,9 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	// (AWS/Vertex look up getAwsModelID / claudeModelMap from that field).
 	if info.UpstreamModelName == "" {
 		info.UpstreamModelName = request.Model
+	}
+	if info.ChannelOtherSettings.ClaudeBedrockCompat {
+		return preserveBedrockClaudeFields(c, info, request)
 	}
 	return request, nil
 }
@@ -148,6 +154,27 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.ChannelOtherSettings.ClaudeBedrockCompat {
+		if err := ValidateBedrockCompatibility(c, info); err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(requestBody)
+		if err != nil {
+			return nil, bedrockCompatibilityError(c, info, "$", "The outbound request body could not be read.")
+		}
+		// All ingress formats converge here, after channel parameter overrides.
+		// Never unmarshal the final body into the lossy typed request DTO.
+		data, err = prepareBedrockClaudeJSON(c, info, data)
+		if err != nil {
+			return nil, err
+		}
+		body, closer, err := relaycommon.NewOutboundJSONBody(data)
+		if err != nil {
+			return nil, err
+		}
+		defer closer.Close()
+		return channel.DoApiRequest(a, c, info, body)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 

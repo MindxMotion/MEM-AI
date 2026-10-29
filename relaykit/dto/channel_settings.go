@@ -131,6 +131,9 @@ type ChannelOtherSettings struct {
 	// rejection. Empty follows the default allow policy. Accepted values:
 	// "", "allow", "safe", "strict".
 	ToolLossPolicy string `json:"tool_loss_policy,omitempty"`
+	// ClaudeBedrockCompat opts the Claude Messages adaptor into strict effort
+	// marker flattening and thinking.display normalization. Native mode is unchanged.
+	ClaudeBedrockCompat bool `json:"claude_bedrock_compat,omitempty"`
 }
 
 // UpstreamBalanceProfile declares matching cumulative subscription/usage semantics.

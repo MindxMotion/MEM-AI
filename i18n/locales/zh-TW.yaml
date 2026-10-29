@@ -39,6 +39,7 @@ relay.group_upstream_saturated: "目前分組上游負載已飽和，請稍後�
 relay.retry_get_channel_failed: "獲取分組 {{.Group}} 下模型 {{.Model}} 的可用管道失敗（retry）：{{.Error}}"
 relay.retry_no_available_channel: "分組 {{.Group}} 下模型 {{.Model}} 的可用管道不存在（retry）"
 relay.access_token_unsupported: "暫不支援使用 access token"
+relay.claude_bedrock_unsupported: "Bedrock 相容模式無法安全轉換 {{.Field}}。請使用 Claude 原生轉發或調整請求/管道設定。"
 
 # Emails and the name of the token created at registration
 user.default_token_name: "{{.Username}}的初始令牌"
