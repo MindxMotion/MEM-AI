@@ -2,6 +2,7 @@ package claude
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -105,7 +106,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	if claudeResponse.Delta != nil && claudeResponse.Delta.StopReason != nil {
 		maybeMarkClaudeRefusal(c, info, *claudeResponse.Delta.StopReason)
 	}
-	if claudeResponse.Type == "message_stop" {
+	if claudeResponse.Type == "message_stop" && info.RelayFormat != types.RelayFormatClaude {
 		info.StreamStatus.MarkCompleted()
 	}
 	if info.RelayFormat == types.RelayFormatClaude {
@@ -124,7 +125,12 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			}
 		}
 		countClaudeStreamBillableTools(info, &claudeResponse)
-		helper.ClaudeChunkData(c, claudeResponse, data)
+		if err := helper.ClaudeChunkData(c, claudeResponse, data); err != nil {
+			return types.NewError(err, types.ErrorCodeBadResponseBody, types.ErrOptionWithSkipRetry())
+		}
+		if claudeResponse.Type == "message_stop" {
+			info.StreamStatus.MarkCompleted()
+		}
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		state, err := claudeToChatStreamState(info)
 		if err != nil {
@@ -324,7 +330,17 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
+			if errors.Is(err, helper.ErrStreamWrite) {
+				// Keep partial upstream usage for settlement without treating delivery as success.
+				sr.Stop(err.Unwrap())
+				err = nil
+				return
+			}
 			sr.Stop(err)
+			return
+		}
+		if info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) {
+			sr.Done()
 		}
 	})
 	info.StreamStatus.RequireTerminal()

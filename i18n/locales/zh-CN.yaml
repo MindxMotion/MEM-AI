@@ -52,6 +52,10 @@ email.password_reset.link: "点击 <a href='{{.Link}}'>此处</a> 进行密码�
 email.password_reset.link_fallback: "如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> {{.Link}}"
 email.password_reset.validity: "重置链接 {{.Minutes}} 分钟内有效，如果不是本人操作，请忽略。"
 
+relay.stream_timeout: "上游响应流在完成前超时"
+relay.stream_interrupted: "上游响应流异常中断"
+relay.stream_missing_terminal: "上游响应流结束，但未收到完成事件"
+
 # Low-quota notices
 notify.quota_low_title: "您的额度即将用尽"
 notify.subscription_quota_low_title: "您的订阅额度即将用尽"

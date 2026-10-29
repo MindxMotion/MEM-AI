@@ -17,6 +17,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var ErrStreamWrite = errors.New("downstream stream write failed")
+
 // streamKeepAliveWriter 在业务写入前保活，写入开始时等待心跳退出。
 type streamKeepAliveWriter struct {
 	gin.ResponseWriter
@@ -194,29 +196,30 @@ func SetEventStreamHeaders(c *gin.Context) {
 }
 
 func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
-	if requestContextDone(c) {
-		return nil
-	}
-
 	jsonData, err := common.Marshal(resp)
 	if err != nil {
-		common.SysError(common.LogText("error marshalling stream response: %s", err.Error()))
-	} else {
-		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
+		return fmt.Errorf("error marshalling stream response: %w", err)
 	}
-	_ = FlushWriter(c)
-	return nil
+	return ClaudeChunkData(c, resp, string(jsonData))
 }
 
-func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
+func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) error {
 	if requestContextDone(c) {
-		return
+		return fmt.Errorf("%w: %w", ErrStreamWrite, c.Request.Context().Err())
 	}
 
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
-	_ = FlushWriter(c)
+	event := common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)}
+	if err := event.Render(c.Writer); err != nil {
+		return fmt.Errorf("%w: %w", ErrStreamWrite, err)
+	}
+	event.Data = "data: " + data
+	if err := event.Render(c.Writer); err != nil {
+		return fmt.Errorf("%w: %w", ErrStreamWrite, err)
+	}
+	if err := FlushWriter(c); err != nil {
+		return fmt.Errorf("%w: %w", ErrStreamWrite, err)
+	}
+	return nil
 }
 
 func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {

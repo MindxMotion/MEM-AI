@@ -90,6 +90,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	defer func() {
+		if newAPIError == nil {
+			newAPIError = relayStreamFailure(c, relayInfo)
+		}
 		service.SetRelayDiagnosticResult(c, relayInfo, newAPIError)
 		if newAPIError != nil {
 			service.RecordRequestPolicyTermination(c, newAPIError)
@@ -238,6 +241,30 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 }
 
+// Stream handlers settle partial usage before this final transport check.
+// Reporting an interrupted stream must neither replay output nor refund it again.
+func relayStreamFailure(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || !info.IsStream || info.StreamStatus == nil || c.Request.Context().Err() != nil {
+		return nil
+	}
+	outcome := info.StreamStatus.OutcomeSnapshot()
+	var message string
+	status := http.StatusBadGateway
+	switch {
+	case outcome.EndReason == relaycommon.StreamEndReasonTimeout:
+		message, status = i18n.MsgRelayStreamTimeout, http.StatusGatewayTimeout
+	case outcome.EndReason == relaycommon.StreamEndReasonScannerErr:
+		message = i18n.MsgRelayStreamInterrupted
+	case outcome.ExpectsTerminal && outcome.Response == relaycommon.ResponseOutcomeUnknown &&
+		outcome.EndReason == relaycommon.StreamEndReasonEOF:
+		message = i18n.MsgRelayStreamMissingTerminal
+	default:
+		return nil
+	}
+	service.RequestPolicy(c).Successful = false
+	return types.NewErrorWithStatusCode(errors.New(i18n.T(c, message)), types.ErrorCodeBadResponseBody, status, types.ErrOptionWithSkipRetry())
+}
+
 func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *types.NewAPIError) {
 	// 心跳提交响应头后，最终错误继续通过同一个流返回。
 	status, _ := common.GetContextKeyType[*relaycommon.StreamStatus](c, constant.ContextKeyResponseStreamStatus)
@@ -247,7 +274,9 @@ func writeRelayStreamError(c *gin.Context, format types.RelayFormat, apiError *t
 	}
 	status.MarkFailed(string(apiError.GetErrorCode()), string(apiError.GetErrorType()), apiError.StatusCode)
 	if format == types.RelayFormatClaude {
-		_ = helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClaudeError()})
+		if err := helper.ClaudeData(c, dto.ClaudeResponse{Type: "error", Error: apiError.ToClaudeError()}); err != nil {
+			logger.LogError(c, common.LogText("send_stream_response_failed: %s", err.Error()))
+		}
 		return
 	}
 	_ = helper.ObjectData(c, gin.H{"error": apiError.ToOpenAIError()})

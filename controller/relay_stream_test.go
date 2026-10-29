@@ -16,9 +16,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -321,4 +324,233 @@ func TestStreamKeepAliveCancellation(t *testing.T) {
 	_, err := c.Writer.WriteString("data: done\n\n")
 	require.NoError(t, err)
 	require.True(t, strings.HasSuffix(recorder.Body.String(), "data: done\n\n"))
+}
+
+type heldClaudeStreamBody struct {
+	io.Reader
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (body *heldClaudeStreamBody) Read(data []byte) (int, error) {
+	n, err := body.Reader.Read(data)
+	if err == io.EOF {
+		<-body.closed
+	}
+	return n, err
+}
+
+func (body *heldClaudeStreamBody) Close() error {
+	body.once.Do(func() { close(body.closed) })
+	return nil
+}
+
+func TestClaudeStreamCompletesWithoutUpstreamEOF(t *testing.T) {
+	previousTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	body := &heldClaudeStreamBody{
+		Reader: strings.NewReader(
+			"data: " + `{"type":"message_start","message":{"id":"msg_test","model":"claude-test","usage":{"input_tokens":2}}}` + "\n\n" +
+				"data: " + `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}` + "\n\n" +
+				"data: " + `{"type":"message_stop"}` + "\n\n"),
+		closed: make(chan struct{}),
+	}
+	defer body.Close()
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude, IsStream: true, DisablePing: true, StartTime: time.Now(),
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-test"},
+	}
+	var usage *dto.Usage
+	var apiError *types.NewAPIError
+	finished := make(chan struct{})
+	go func() {
+		usage, apiError = claude.ClaudeStreamHandler(c, &http.Response{Header: make(http.Header), Body: body}, info)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		require.NoError(t, body.Close())
+		<-finished
+		t.Fatal("message_stop must finish the response without waiting for upstream EOF")
+	}
+	require.Nil(t, apiError)
+	require.NotNil(t, usage)
+	assert.Equal(t, 2, usage.PromptTokens)
+	assert.Equal(t, 3, usage.CompletionTokens)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.Equal(t, "completed", info.StreamStatus.ResponseOutcome())
+	assert.Nil(t, relayStreamFailure(c, info))
+	assert.Equal(t, 1, strings.Count(recorder.Body.String(), `"type":"message_stop"`))
+	select {
+	case <-body.closed:
+	default:
+		t.Fatal("the completed upstream response body must be closed")
+	}
+}
+
+type failedClaudeStreamWriter struct {
+	gin.ResponseWriter
+	writeError   error
+	flushError   error
+	terminalOnly bool
+	terminal     bool
+}
+
+func (writer *failedClaudeStreamWriter) Write(data []byte) (int, error) {
+	if strings.Contains(string(data), "event: message_stop") {
+		writer.terminal = true
+	}
+	if writer.writeError != nil && (!writer.terminalOnly || writer.terminal) {
+		return 0, writer.writeError
+	}
+	return writer.ResponseWriter.Write(data)
+}
+
+func (writer *failedClaudeStreamWriter) FlushError() error {
+	if writer.terminalOnly && !writer.terminal {
+		return nil
+	}
+	return writer.flushError
+}
+
+func TestClaudeStreamCompletionRequiresSuccessfulDelivery(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		writeError error
+		flushError error
+		cancelled  bool
+	}{
+		{name: "write failed", writeError: io.ErrClosedPipe},
+		{name: "flush failed", flushError: io.ErrClosedPipe},
+		{name: "client cancelled", cancelled: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil).WithContext(ctx)
+			c.Writer = &failedClaudeStreamWriter{ResponseWriter: c.Writer, writeError: test.writeError, flushError: test.flushError}
+			if test.cancelled {
+				cancel()
+			}
+			info := &relaycommon.RelayInfo{
+				RelayFormat: types.RelayFormatClaude, ChannelMeta: &relaycommon.ChannelMeta{},
+				StreamStatus: relaycommon.NewStreamStatus(),
+			}
+			apiError := claude.HandleStreamResponseData(c, info, &claude.ClaudeResponseInfo{Usage: &dto.Usage{}}, `{"type":"message_stop"}`)
+			require.NotNil(t, apiError)
+			assert.True(t, types.IsSkipRetryError(apiError), "a failed downstream write must never replay upstream generation")
+			assert.NotEqual(t, "completed", info.StreamStatus.ResponseOutcome())
+			assert.Equal(t, "stop", service.DecideRelayRetry(c, apiError, 1).Action)
+			err := helper.ClaudeData(c, dto.ClaudeResponse{Type: "message_stop"})
+			assert.Error(t, err, "converted Claude events must also surface delivery errors")
+
+			if test.cancelled {
+				return
+			}
+			c, _ = gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			c.Writer = &failedClaudeStreamWriter{
+				ResponseWriter: c.Writer, writeError: test.writeError, flushError: test.flushError, terminalOnly: true,
+			}
+			info = &relaycommon.RelayInfo{
+				RelayFormat: types.RelayFormatClaude, IsStream: true, DisablePing: true, StartTime: time.Now(),
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-test"},
+			}
+			previousTimeout := constant.StreamingTimeout
+			constant.StreamingTimeout = 30
+			defer func() { constant.StreamingTimeout = previousTimeout }()
+			body := "data: " + `{"type":"message_start","message":{"id":"msg_test","model":"claude-test","usage":{"input_tokens":2}}}` + "\n\n" +
+				"data: " + `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}` + "\n\n" +
+				"data: " + `{"type":"message_stop"}` + "\n\n"
+			usage, apiError := claude.ClaudeStreamHandler(c, &http.Response{Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, info)
+			require.Nil(t, apiError, "delivery failure must retain partial usage for the existing settlement path")
+			require.NotNil(t, usage)
+			assert.Equal(t, 2, usage.PromptTokens)
+			assert.Equal(t, 3, usage.CompletionTokens)
+			assert.True(t, info.StreamStatus.HasErrors())
+			assert.NotEqual(t, "completed", info.StreamStatus.ResponseOutcome())
+			service.MarkRequestPolicySuccess(c, info.StreamStatus)
+			assert.False(t, service.RequestPolicy(c).Successful)
+		})
+	}
+}
+
+func TestRelayStreamFailureNotification(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	for _, test := range []struct {
+		name      string
+		end       relaycommon.StreamEndReason
+		terminal  string
+		status    int
+		message   string
+		cancelled bool
+		nonStream bool
+		legacyEOF bool
+	}{
+		{name: "idle timeout", end: relaycommon.StreamEndReasonTimeout, status: 504, message: "The upstream response stream timed out before completion"},
+		{name: "read interrupted", end: relaycommon.StreamEndReasonScannerErr, status: 502, message: "The upstream response stream was interrupted"},
+		{name: "missing terminal", end: relaycommon.StreamEndReasonEOF, status: 502, message: "The upstream response stream ended without a completion event"},
+		{name: "completed", end: relaycommon.StreamEndReasonDone, terminal: "completed"},
+		{name: "upstream error already delivered", end: relaycommon.StreamEndReasonEOF, terminal: "failed"},
+		{name: "incomplete terminal already delivered", end: relaycommon.StreamEndReasonEOF, terminal: "incomplete"},
+		{name: "client cancelled", end: relaycommon.StreamEndReasonClientGone, cancelled: true},
+		{name: "non stream", end: relaycommon.StreamEndReasonEOF, nonStream: true},
+		{name: "legacy protocol without terminal contract", end: relaycommon.StreamEndReasonEOF, legacyEOF: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil).WithContext(ctx)
+			c.Request.Header.Set("Accept-Language", "en")
+			require.NoError(t, helper.PingData(c))
+			info := &relaycommon.RelayInfo{IsStream: !test.nonStream, StreamStatus: relaycommon.NewStreamStatus()}
+			if !test.legacyEOF {
+				info.StreamStatus.RequireTerminal()
+			}
+			info.StreamStatus.SetEndReason(test.end, errors.New("private upstream detail"))
+			switch test.terminal {
+			case "completed":
+				info.StreamStatus.MarkCompleted()
+			case "failed":
+				info.StreamStatus.MarkFailed("", "", 500)
+			case "incomplete":
+				info.StreamStatus.MarkIncomplete("max_output_tokens")
+			}
+			if test.cancelled {
+				cancel()
+			}
+			service.MarkRequestPolicySuccess(c, info.StreamStatus)
+			if test.status != 0 {
+				assert.False(t, service.RequestPolicy(c).Successful, "consume-log policy must not label a truncated stream successful")
+			}
+			if test.legacyEOF || test.terminal == "completed" {
+				assert.True(t, service.RequestPolicy(c).Successful)
+			}
+			apiError := relayStreamFailure(c, info)
+			if test.status == 0 {
+				assert.Nil(t, apiError)
+				return
+			}
+			require.NotNil(t, apiError)
+			assert.Equal(t, test.status, apiError.StatusCode)
+			assert.Equal(t, test.message, apiError.Error())
+			assert.Equal(t, "stop", service.DecideRelayRetry(c, apiError, 1).Action)
+			writeRelayStreamError(c, types.RelayFormatClaude, apiError)
+			assert.Equal(t, http.StatusOK, recorder.Code, "committed SSE headers must remain unchanged")
+			assert.Equal(t, 1, strings.Count(recorder.Body.String(), "event: error\n"))
+			assert.Contains(t, recorder.Body.String(), test.message)
+			assert.NotContains(t, recorder.Body.String(), "private upstream detail")
+			assert.NotContains(t, recorder.Body.String(), "message_stop", "an interrupted stream must never get a fake completion")
+			assert.False(t, service.RequestPolicy(c).Successful)
+		})
+	}
 }
