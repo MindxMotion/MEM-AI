@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { lazy, Suspense } from 'react'
+
+import { LoadingState } from '@/components/loading-state'
+
 import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
@@ -26,7 +30,22 @@ import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
+const ReliabilitySection = lazy(() =>
+  import('./reliability/reliability-section').then((module) => ({
+    default: module.ReliabilitySection,
+  }))
+)
+
 const OPERATIONS_SECTIONS = [
+  {
+    id: 'reliability',
+    titleKey: 'Request reliability',
+    build: (_settings: OperationsSettings) => (
+      <Suspense fallback={<LoadingState />}>
+        <ReliabilitySection />
+      </Suspense>
+    ),
+  },
   {
     id: 'behavior',
     titleKey: 'System Behavior',

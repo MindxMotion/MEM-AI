@@ -1,0 +1,75 @@
+name: Request reliability database compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mindxmotion, feat/root-reliability-panel-20261029]
+    paths:
+      - .github/workflows/request-reliability.yml
+      - controller/relay_reliability*
+      - model/relay_reliability.go
+      - model/relay_outcome.go
+      - router/api-router.go
+      - web/src/features/system-settings/operations/**
+  pull_request:
+    paths:
+      - .github/workflows/request-reliability.yml
+      - controller/relay_reliability*
+      - model/relay_reliability.go
+      - model/relay_outcome.go
+      - router/api-router.go
+
+permissions:
+  contents: read
+
+jobs:
+  databases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-fixture
+          MYSQL_DATABASE: fixture
+        ports:
+          - 127.0.0.1:3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-fixture
+          POSTGRES_DB: fixture
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d fixture"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      GOWORK: 'off'
+      TEST_MANAGE_USER_SEPARATE_LOG_DB: '1'
+      TEST_MYSQL_DSN: root:${{ github.run_id }}-${{ github.run_attempt }}-fixture@tcp(127.0.0.1:3306)/fixture?charset=utf8mb4&parseTime=True&loc=UTC
+      TEST_POSTGRES_DSN: postgres://postgres:${{ github.run_id }}-${{ github.run_attempt }}-fixture@127.0.0.1:5432/fixture?sslmode=disable
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            relaykit/go.sum
+            tokenkit/go.sum
+      - name: Create frontend embed placeholder
+        run: mkdir -p web/dist && touch web/dist/index.html
+      - name: Verify real SQLite, MySQL and PostgreSQL instances
+        shell: bash
+        run: |
+          set -euo pipefail
+          for dialect in sqlite mysql postgres; do
+            TEST_MANAGE_USER_DIALECT="$dialect" go test -mod=readonly -p=2 ./controller \
+              -run '^TestRequestReliability(DatabaseMatrix|RootAccessAndValidation)$' -count=1 -v
+          done
+      - name: Build gateway
+        run: go build -mod=readonly ./...
