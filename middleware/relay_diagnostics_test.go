@@ -87,6 +87,28 @@ func TestRelayDiagnosticsTerminalOutcomes(t *testing.T) {
 			cancel()
 			c.Request = c.Request.WithContext(ctx)
 		}},
+		{"nonstream-completed-before-cancel", "/v1/messages", "success", "completed", func(c *gin.Context) {
+			service.SetRelayDiagnosticResult(c, &relaycommon.RelayInfo{IsStream: false}, nil)
+			_, err := c.Writer.Write([]byte(`{"content":[{"type":"text","text":"done"}]}`))
+			require.NoError(t, err)
+			ctx, cancel := context.WithCancel(c.Request.Context())
+			cancel()
+			c.Request = c.Request.WithContext(ctx)
+		}},
+		{"nonstream-cancel-before-response", "/v1/messages", "cancelled", "client_disconnected", func(c *gin.Context) {
+			service.SetRelayDiagnosticResult(c, &relaycommon.RelayInfo{IsStream: false}, nil)
+			ctx, cancel := context.WithCancel(c.Request.Context())
+			cancel()
+			c.Request = c.Request.WithContext(ctx)
+		}},
+		{"nonstream-failed-before-cancel", "/v1/messages", "cancelled", "client_disconnected", func(c *gin.Context) {
+			service.SetRelayDiagnosticResult(c, &relaycommon.RelayInfo{IsStream: false},
+				types.NewErrorWithStatusCode(errors.New("upstream failure"), types.ErrorCodeDoRequestFailed, 502))
+			c.AbortWithStatus(502)
+			ctx, cancel := context.WithCancel(c.Request.Context())
+			cancel()
+			c.Request = c.Request.WithContext(ctx)
+		}},
 		{"timeout", "/v1/messages", "failure", "timeout", func(c *gin.Context) {
 			stream := relaycommon.NewStreamStatus()
 			stream.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)

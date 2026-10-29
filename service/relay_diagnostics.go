@@ -159,6 +159,8 @@ func FinishRelayDiagnostic(c *gin.Context, endpoint string, started time.Time, p
 		result.ErrorStatus = snapshot.ErrorStatus
 	}
 	result.StreamEnd = string(snapshot.EndReason)
+	completedNonStream := state.info != nil && !result.Stream && stream == nil &&
+		state.apiError == nil && result.HTTPStatus >= 200 && result.HTTPStatus < 300 && result.ResponseStarted
 	result.Outcome, result.Reason = "success", "completed"
 	switch {
 	case panicked:
@@ -171,7 +173,7 @@ func FinishRelayDiagnostic(c *gin.Context, endpoint string, started time.Time, p
 	case c.Request.Context().Err() == context.DeadlineExceeded,
 		snapshot.EndReason == relaycommon.StreamEndReasonTimeout:
 		result.Outcome, result.Reason = "failure", "timeout"
-	case c.Request.Context().Err() == context.Canceled && snapshot.Response != relaycommon.ResponseOutcomeCompleted,
+	case c.Request.Context().Err() == context.Canceled && snapshot.Response != relaycommon.ResponseOutcomeCompleted && !completedNonStream,
 		snapshot.Response == relaycommon.ResponseOutcomeCancelled,
 		snapshot.EndReason == relaycommon.StreamEndReasonClientGone && snapshot.Response != relaycommon.ResponseOutcomeCompleted:
 		result.Outcome, result.Reason = "cancelled", "client_disconnected"
