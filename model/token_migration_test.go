@@ -95,7 +95,7 @@ func TestTokenUserQuotaPermissionMigrationDatabaseMatrix(t *testing.T) {
 			for _, upgrade := range []bool{false, true} {
 				t.Run(fmt.Sprintf("upgrade=%v", upgrade), func(t *testing.T) {
 					table := fmt.Sprintf("quota_permission_%d", time.Now().UnixNano())
-					tableDB := db.Table(table)
+					tableDB := db.Table(table).Session(&gorm.Session{})
 					t.Cleanup(func() { assert.NoError(t, db.Migrator().DropTable(table)) })
 					require.NoError(t, tableDB.AutoMigrate(&Token{}))
 					original := Token{
