@@ -123,7 +123,7 @@ beforeEach(() => {
   }
   list = { items: [], legacy: null }
   vi.spyOn(api, 'get').mockImplementation(
-    async (url, config: ApiRequestConfig | undefined) => {
+    async (url, config?: ApiRequestConfig) => {
       if (url === '/api/verify/methods') {
         return {
           data: {

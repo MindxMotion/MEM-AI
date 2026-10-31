@@ -131,7 +131,7 @@ beforeEach(() => {
   listFailure = null
   catalogGate = Promise.resolve()
   vi.spyOn(api, 'get').mockImplementation(
-    async (url, config: ApiRequestConfig | undefined) => {
+    async (url, config?: ApiRequestConfig) => {
       if (url === '/api/audit/self') {
         return { data: { success: true, data: { items: [], total: 0 } } }
       }

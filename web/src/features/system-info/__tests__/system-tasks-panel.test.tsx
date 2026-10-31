@@ -135,7 +135,7 @@ it('keeps filters available and disables cleanup when history is empty', async (
 
 it('requires confirmation and cleans all matching history pages using the selected filters', async () => {
   vi.spyOn(api, 'get').mockImplementation(
-    async (_url, config: ApiRequestConfig | undefined) => ({
+    async (_url, config?: ApiRequestConfig) => ({
       data: {
         success: true,
         data: config?.params?.scope === 'active' ? [] : [task],
@@ -222,7 +222,7 @@ it('retains the confirmation and shows the server error when cleanup fails', asy
 it('shows history query failures without hiding active tasks and allows retry', async () => {
   let historyFailed = true
   vi.spyOn(api, 'get').mockImplementation(
-    async (_url, config: ApiRequestConfig | undefined) => {
+    async (_url, config?: ApiRequestConfig) => {
       if (config?.params?.scope === 'history' && historyFailed) {
         return { data: { success: false, message: 'History unavailable' } }
       }
@@ -260,7 +260,7 @@ it('shows history query failures without hiding active tasks and allows retry', 
 it('refreshes history when the last running task finishes', async () => {
   let finished = false
   vi.spyOn(api, 'get').mockImplementation(
-    async (_url, config: ApiRequestConfig | undefined) => {
+    async (_url, config?: ApiRequestConfig) => {
       const active = config?.params?.scope === 'active'
       const data =
         active === finished

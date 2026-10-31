@@ -3,7 +3,7 @@ name: Request reliability database compatibility
 on:
   workflow_dispatch:
   push:
-    branches: [mindxmotion, feat/root-reliability-panel-20261029, fix/bedrock-compat-and-oidc-20261029]
+    branches: [mindxmotion, feat/root-reliability-panel-20261029, fix/bedrock-compat-and-oidc-20261029, sync/upstream-20261101]
     paths:
       - .github/workflows/request-reliability.yml
       - controller/relay_reliability*
@@ -29,7 +29,7 @@ permissions:
 jobs:
   databases:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:8.0
@@ -72,13 +72,47 @@ jobs:
         run: |
           set -euo pipefail
           for dialect in sqlite mysql postgres; do
-            TEST_MANAGE_USER_DIALECT="$dialect" go test -mod=readonly -p=2 ./controller \
-              -run '^Test(RequestReliability(DatabaseMatrix|RootAccessAndValidation)|OIDCConsolidationDatabaseMatrix)$' -count=1 -v
+            TEST_MANAGE_USER_DIALECT="$dialect" TEST_TASK_DB_DIALECT="$dialect" \
+              AUDIT_MYSQL_DSN="$TEST_MYSQL_DSN" AUDIT_POSTGRES_DSN="$TEST_POSTGRES_DSN" \
+              go test -mod=readonly -p=1 ./controller \
+              -run 'DatabaseMatrix|RootAccessAndValidation|TaskPlugin' -count=1 -v
           done
+          go test -mod=readonly -p=1 ./model \
+            -run 'DatabaseMatrix|Migration|MigrateToken' -count=1 -v
+      - name: Vet and test complete gateway
+        run: |
+          go vet -mod=readonly ./...
+          env -u TEST_MYSQL_DSN -u TEST_POSTGRES_DSN \
+            go test -mod=readonly -p=2 ./... -count=1
       - name: Build gateway
         run: go build -mod=readonly ./...
       - name: Verify native and opt-in Claude compatibility
         run: go test -mod=readonly -p=2 ./relay/channel/claude ./relay/common -count=1
       - name: Build independent relaykit module
         working-directory: relaykit
-        run: GOWORK=off go build -mod=readonly ./...
+        run: |
+          go vet -mod=readonly ./...
+          go test -mod=readonly -p=2 ./... -count=1
+          go build -mod=readonly ./...
+      - name: Verify independent tokenkit module
+        working-directory: tokenkit
+        run: |
+          go vet -mod=readonly ./...
+          go test -mod=readonly -p=2 ./... -count=1
+          go build -mod=readonly ./...
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.4'
+      - run: bun install --frozen-lockfile
+      - run: bun check -b
+      - run: bun run lint
+      - run: bun run test
+      - run: bun run build

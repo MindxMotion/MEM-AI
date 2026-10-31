@@ -88,7 +88,7 @@ func GetOptions(c *gin.Context) {
 		if system_setting.OIDCManagedByEnvironment() && strings.HasPrefix(k, "oidc.") {
 			continue
 		}
-		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == "ResendKeyConfigured" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -108,6 +108,9 @@ func GetOptions(c *gin.Context) {
 			optionValues[k] = value
 		}
 	}
+	options = append(options, &model.Option{
+		Key: "ResendKeyConfigured", Value: strconv.FormatBool(strings.TrimSpace(common.OptionMap["ResendApiKey"]) != ""),
+	})
 	common.OptionMapRWMutex.Unlock()
 	if system_setting.OIDCManagedByEnvironment() {
 		settings := system_setting.GetOIDCSettings()

@@ -303,6 +303,7 @@ describe('API key expiry across editing sessions', () => {
         model_limits_enabled: false,
         model_limits: '',
         allow_ips: '',
+        allow_user_quota_query: true,
       }
       const second = { ...first, id: 2, name: 'non-expiring', expired_time: -1 }
       let resolveDetail!: (value: { data: unknown }) => void
@@ -401,4 +402,25 @@ describe('API key expiry across editing sessions', () => {
       expect(payloads[0]?.expired_time).toBe(-1)
     }
   )
+})
+
+describe('API keys mutate drawer user quota query switch', () => {
+  test('sends false for a new key after the switch, which starts on, is turned off', async () => {
+    const createdPayloads: Array<Record<string, unknown>> = []
+    installApiFixtures(createdPayloads)
+    await renderCreateDrawer()
+
+    fireEvent.click(findButton('Advanced Settings', true))
+    const quotaQuerySwitch = await screen.findByRole('switch', {
+      name: 'Allow querying user quota',
+    })
+    expect(quotaQuerySwitch).toBeChecked()
+    fireEvent.click(quotaQuerySwitch)
+    expect(quotaQuerySwitch).not.toBeChecked()
+
+    changeInput(getControlByLabel('Name'), 'no-user-quota')
+    fireEvent.click(findButton('Save changes', true))
+    await waitFor(() => expect(createdPayloads).toHaveLength(1))
+    expect(createdPayloads[0]?.allow_user_quota_query).toBe(false)
+  })
 })

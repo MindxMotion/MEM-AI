@@ -67,6 +67,73 @@ func TestMigrateTokenKeyUniquenessSQLite(t *testing.T) {
 	testTokenKeyMigrationNonPostgreSQL(t, db)
 }
 
+func TestTokenUserQuotaPermissionMigrationDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var driver gorm.Dialector
+			switch dialect {
+			case "sqlite":
+				driver = sqlite.Open(":memory:")
+			case "mysql":
+				dsn := os.Getenv("TEST_MYSQL_DSN")
+				if dsn == "" {
+					t.Skip("TEST_MYSQL_DSN is not configured")
+				}
+				driver = mysql.Open(dsn)
+			case "postgres":
+				dsn := os.Getenv("TEST_POSTGRES_DSN")
+				if dsn == "" {
+					t.Skip("TEST_POSTGRES_DSN is not configured")
+				}
+				driver = postgres.Open(dsn)
+			}
+			db, err := gorm.Open(driver, &gorm.Config{})
+			require.NoError(t, err)
+			connection, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, connection.Close()) })
+			for _, upgrade := range []bool{false, true} {
+				t.Run(fmt.Sprintf("upgrade=%v", upgrade), func(t *testing.T) {
+					table := fmt.Sprintf("quota_permission_%d", time.Now().UnixNano())
+					tableDB := db.Table(table)
+					t.Cleanup(func() { assert.NoError(t, db.Migrator().DropTable(table)) })
+					require.NoError(t, tableDB.AutoMigrate(&Token{}))
+					original := Token{
+						UserId: 7, Key: "preserved-api-key", Name: "restricted",
+						Status: 1, ExpiredTime: 12345, RemainQuota: 99,
+						ModelLimitsEnabled: true, ModelLimits: "claude-opus-4-6",
+						Group: "default",
+					}
+					if upgrade {
+						// The deployed schema differs only by this new permission column.
+						require.NoError(t, tableDB.Migrator().DropColumn(&Token{}, "AllowUserQuotaQuery"))
+						require.NoError(t, tableDB.Omit("AllowUserQuotaQuery").Create(&original).Error)
+					}
+					indexes, err := tableDB.Migrator().GetIndexes(&Token{})
+					require.NoError(t, err)
+					for range 2 {
+						require.NoError(t, tableDB.AutoMigrate(&Token{}))
+					}
+					if !upgrade {
+						require.NoError(t, tableDB.Create(&original).Error)
+					}
+					var stored Token
+					require.NoError(t, tableDB.First(&stored, original.Id).Error)
+					assert.Equal(t, original, stored, "existing keys and restrictions survive without granting user-quota access")
+					assert.False(t, stored.AllowUserQuotaQuery)
+					for _, index := range indexes {
+						assert.True(t, tableDB.Migrator().HasIndex(&Token{}, index.Name()))
+					}
+					assert.Error(t, tableDB.Create(&Token{UserId: 8, Key: original.Key}).Error, "key uniqueness survives both startups")
+					require.NoError(t, tableDB.Where("id = ?", original.Id).Update("allow_user_quota_query", true).Error)
+					require.NoError(t, tableDB.First(&stored, original.Id).Error)
+					assert.True(t, stored.AllowUserQuotaQuery, "the permission remains explicitly opt-in for existing keys")
+				})
+			}
+		})
+	}
+}
+
 func TestMigrateTokenKeyUniquenessMySQL(t *testing.T) {
 	dsn := strings.TrimSpace(os.Getenv("TEST_MYSQL_DSN"))
 	if dsn == "" {
