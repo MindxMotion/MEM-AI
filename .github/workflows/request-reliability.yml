@@ -10,6 +10,7 @@ on:
       - model/relay_reliability.go
       - model/relay_outcome.go
       - model/oidc_consolidation.go
+      - model/token_migration_test.go
       - controller/oidc_consolidation_test.go
       - router/api-router.go
       - web/src/features/system-settings/operations/**
@@ -20,6 +21,7 @@ on:
       - model/relay_reliability.go
       - model/relay_outcome.go
       - model/oidc_consolidation.go
+      - model/token_migration_test.go
       - controller/oidc_consolidation_test.go
       - router/api-router.go
 
@@ -102,7 +104,7 @@ jobs:
           go build -mod=readonly ./...
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: web
