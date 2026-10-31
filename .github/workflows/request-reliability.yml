@@ -14,6 +14,8 @@ on:
       - middleware/access_token_routes.go
       - middleware/auth_test.go
       - relay/channel/claude/**
+      - relaykit/**
+      - tokenkit/**
       - controller/oidc_consolidation_test.go
       - router/api-router.go
       - web/src/features/system-settings/operations/**
@@ -28,6 +30,8 @@ on:
       - middleware/access_token_routes.go
       - middleware/auth_test.go
       - relay/channel/claude/**
+      - relaykit/**
+      - tokenkit/**
       - controller/oidc_consolidation_test.go
       - router/api-router.go
 
