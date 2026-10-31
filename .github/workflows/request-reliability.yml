@@ -11,6 +11,9 @@ on:
       - model/relay_outcome.go
       - model/oidc_consolidation.go
       - model/token_migration_test.go
+      - middleware/access_token_routes.go
+      - middleware/auth_test.go
+      - relay/channel/claude/**
       - controller/oidc_consolidation_test.go
       - router/api-router.go
       - web/src/features/system-settings/operations/**
@@ -22,6 +25,9 @@ on:
       - model/relay_outcome.go
       - model/oidc_consolidation.go
       - model/token_migration_test.go
+      - middleware/access_token_routes.go
+      - middleware/auth_test.go
+      - relay/channel/claude/**
       - controller/oidc_consolidation_test.go
       - router/api-router.go
 

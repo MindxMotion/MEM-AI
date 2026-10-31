@@ -321,6 +321,11 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 	profile, _ := createMiddlewareScopedToken(t, admin.Id, 0, "profile:read")
 	channel, _ := createMiddlewareScopedToken(t, admin.Id, time.Now().Unix()+3600, "channel:read")
 	expired, _ := createMiddlewareScopedToken(t, admin.Id, time.Now().Unix()-1, "profile:read")
+	adminOps, _ := createMiddlewareScopedToken(t, admin.Id, 0, "ops:read")
+	root := createMiddlewarePATUser(t, "route-rule-root", "middleware-root-legacy-token")
+	require.NoError(t, model.DB.Model(root).Update("role", common.RoleRootUser).Error)
+	rootOps, _ := createMiddlewareScopedToken(t, root.Id, 0, "ops:read")
+	rootProfile, _ := createMiddlewareScopedToken(t, root.Id, 0, "profile:read")
 
 	ok := func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"id": c.GetInt("id")}) }
 	router := gin.New()
@@ -328,6 +333,7 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 	router.GET("/api/user/access_tokens", UserAuth(), ok)
 	router.GET("/api/undeclared", UserAuth(), ok)
 	router.GET("/api/channel/", AdminAuth(), RequirePermission(authz.ChannelRead), ok)
+	router.GET("/api/performance/reliability", RootAuth(), ok)
 	router.GET("/api/pricing", TryUserAuth(), ok)
 
 	for _, test := range []struct {
@@ -340,6 +346,9 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 		{name: "session route", path: "/api/user/access_tokens", token: profile, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
 		{name: "permission route with its scope", path: "/api/channel/", token: channel, status: http.StatusOK},
 		{name: "permission route without its scope", path: "/api/channel/", token: profile, status: http.StatusForbidden, code: "ACCESS_TOKEN_SCOPE_DENIED", reason: "scope_denied"},
+		{name: "reliability requires root and operations scope", path: "/api/performance/reliability", token: rootOps, status: http.StatusOK},
+		{name: "root reliability token lacks operations scope", path: "/api/performance/reliability", token: rootProfile, status: http.StatusForbidden, code: "ACCESS_TOKEN_SCOPE_DENIED", reason: "scope_denied"},
+		{name: "operations scope never grants root privileges", path: "/api/performance/reliability", token: adminOps, status: http.StatusForbidden},
 		{name: "expired token", path: "/api/user/self", token: expired, status: http.StatusUnauthorized, code: "ACCESS_TOKEN_EXPIRED", reason: "expired"},
 		{name: "legacy token before the deadline", path: "/api/user/self", token: legacy, status: http.StatusOK},
 		{name: "legacy token on a session route", path: "/api/user/access_tokens", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
