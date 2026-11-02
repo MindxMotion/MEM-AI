@@ -96,6 +96,11 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	if common.GetEnvOrDefaultBool("PASSWORD_LOGIN_ADMIN_ONLY", false) && user.Role < common.RoleAdminUser {
+		common.ApiErrorT(c, "Username or password is incorrect, or user has been banned")
+		return
+	}
+
 	setupLogin(&user, nil, c)
 }
 

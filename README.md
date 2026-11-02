@@ -374,6 +374,9 @@ docker compose logs -f new-api
 | --- | --- |
 | `SQL_DSN` | Main database connection; unset uses SQLite |
 | `LOG_SQL_DSN` | Optional separate log database connection |
+| `SQL_MAX_OPEN_CONNS` | Maximum connections per database pool; size for the database's shared connection budget |
+| `SQL_MAX_IDLE_CONNS` | Idle connections retained per pool |
+| `SQL_MAX_LIFETIME` | Maximum connection lifetime in seconds |
 | `REDIS_CONN_STRING` | Redis connection string |
 | `SESSION_SECRET` | Persistent authentication secret; all nodes must use the same value |
 | `CRYPTO_SECRET` | Defaults to `SESSION_SECRET`; nodes sharing Redis must use the same effective value |
@@ -382,6 +385,8 @@ docker compose logs -f new-api
 | `TRUSTED_PROXIES` | Trusted reverse-proxy IPs/CIDRs, or `none`; explicitly configure for your network |
 
 See the [environment example](./.env.example), [environment reference](https://docs.newapi.ai/en/docs/installation/config-maintenance/environment-variables), and [authentication and session guide](./docs/authentication.md) for full configuration. Configure container variables in Compose's `environment` or `env_file`; copying `.env.example` alone does not inject variables into the container.
+
+Changing `SQL_DSN` initializes the destination schema but does not transfer existing data. Stop application writes before copying all tables, verify their values and reset ID sequences before starting against the destination. Leave `LOG_SQL_DSN` unset to keep logs in the main database. Setup version identifiers use text storage so descriptive build versions are preserved when migrating from SQLite to databases that enforce column lengths.
 
 For production, put the console behind HTTPS and configure your reverse proxy for streaming and WebSocket upgrades. Persist and back up the database and mounted data. Multi-node deployments must share the main database and authentication secrets; separate Redis instances or in-memory rate limiters count limits independently per node. The session guide describes propagation behavior for each topology.
 
