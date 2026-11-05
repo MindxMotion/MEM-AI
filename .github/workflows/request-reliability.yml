@@ -88,6 +88,11 @@ jobs:
               AUDIT_MYSQL_DSN="$TEST_MYSQL_DSN" AUDIT_POSTGRES_DSN="$TEST_POSTGRES_DSN" \
               go test -mod=readonly -p=1 ./controller \
               -run 'DatabaseMatrix|RootAccessAndValidation|TaskPlugin' -count=1 -v
+            channel_dsn=''
+            if [[ "$dialect" == mysql ]]; then channel_dsn="$TEST_MYSQL_DSN"; fi
+            if [[ "$dialect" == postgres ]]; then channel_dsn="$TEST_POSTGRES_DSN"; fi
+            TEST_CHANNEL_SQL_DSN="$channel_dsn" \
+              go test -mod=readonly -p=1 ./controller -run '^TestAddChannel' -count=1 -v
           done
           go test -mod=readonly -p=1 ./model \
             -run 'DatabaseMatrix|Migration|MigrateToken' -count=1 -v
@@ -128,9 +133,9 @@ jobs:
       - name: Lint synchronized frontend files
         shell: bash
         run: |
-          git fetch --depth=1 origin 8292988f6ace1c06a7ce4a0aa65972644510f475
+          git fetch --depth=1 origin e1a3604d5d1068f0fb8936db668abb4f6876fa2c
           mapfile -t files < <(git diff --relative --name-only --diff-filter=ACMR \
-            8292988f6ace1c06a7ce4a0aa65972644510f475 HEAD -- '*.ts' '*.tsx' '*.mjs')
+            e1a3604d5d1068f0fb8936db668abb4f6876fa2c HEAD -- '*.ts' '*.tsx' '*.mjs')
           if ((${#files[@]})); then
             bun x oxlint -c .oxlintrc.json "${files[@]}"
           fi

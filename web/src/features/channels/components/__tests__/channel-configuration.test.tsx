@@ -3029,3 +3029,71 @@ test('AWS interface selection is disabled without sensitive channel write permis
     await screen.findByRole('combobox', { name: 'AWS API' })
   ).toBeDisabled()
 })
+
+test.each([
+  { sensitiveWrite: true, saved: 'v1', next: 'v1beta1' },
+  { sensitiveWrite: true, saved: 'v1beta1', next: 'v1' },
+  { sensitiveWrite: false, saved: 'v1', next: 'v1' },
+])(
+  'Vertex endpoint switch respects sensitive write=$sensitiveWrite and the saved $saved endpoint',
+  async ({ sensitiveWrite, saved, next }) => {
+    editingChannel = {
+      ...editingChannel,
+      type: 41,
+      other: '{"default":"global"}',
+      settings: JSON.stringify({
+        vertex_key_type: 'api_key',
+        vertex_api_version: saved,
+      }),
+    }
+    useAuthStore.setState({
+      auth: {
+        ...originalAuth,
+        user: {
+          id: 10,
+          username: 'operator',
+          role: ROLE.ADMIN,
+          permissions: {
+            admin_permissions: {
+              channel: {
+                read: true,
+                write: true,
+                sensitive_write: sensitiveWrite,
+              },
+            },
+          },
+        },
+      },
+    })
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(<ConfigurationHarness currentRow={editingChannel} />)
+    const toggle = await screen.findByRole('switch', {
+      name: 'Use Vertex AI v1beta1 endpoint',
+    })
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute(
+        'aria-checked',
+        String(saved === 'v1beta1')
+      )
+    )
+    if (!sensitiveWrite) {
+      expect(toggle).toHaveAttribute('aria-disabled', 'true')
+    }
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', String(next === 'v1beta1'))
+    await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+    await waitFor(() => expect(put).toHaveBeenCalled())
+    const payload = put.mock.calls[0]?.[1]
+    if (sensitiveWrite) {
+      expect(payload).toHaveProperty('settings')
+      expect(
+        JSON.parse((payload as { settings: string }).settings)
+      ).toMatchObject({ vertex_api_version: next })
+    } else {
+      expect(payload).not.toHaveProperty('settings')
+    }
+  }
+)
