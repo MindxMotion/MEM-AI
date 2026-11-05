@@ -63,6 +63,78 @@ describe('Vertex AI API Key project ID', () => {
     })
   })
 
+  describe('Vertex AI endpoint version', () => {
+    test.each(['v1', 'v1beta1'] as const)(
+      'saves and restores %s without dropping custom settings',
+      (version) => {
+        const settings = savedSettings(
+          vertexAPIKeyForm({
+            vertex_api_version: version,
+            settings: JSON.stringify({
+              upstream_balance: {
+                profile: 'legacy_subscription_usage',
+                origin: 'bestmax',
+                unit: 'USD',
+                scope: 'account',
+                period: 'cumulative',
+              },
+              claude_bedrock_compat: true,
+            }),
+          })
+        )
+        expect(settings).toMatchObject({
+          vertex_api_version: version,
+          upstream_balance: {
+            profile: 'legacy_subscription_usage',
+            origin: 'bestmax',
+            unit: 'USD',
+            scope: 'account',
+            period: 'cumulative',
+          },
+          claude_bedrock_compat: true,
+        })
+        const channel = channelSchema.parse({
+          id: 7,
+          name: 'Vertex AI',
+          type: CHANNEL_TYPE_VERTEX_AI,
+          key: '',
+          status: 1,
+          created_time: 1,
+          test_time: 0,
+          response_time: 0,
+          balance_updated_time: 0,
+          models: 'gemini-4-argon',
+          group: 'default',
+          settings: JSON.stringify(settings),
+        })
+        expect(transformChannelToFormDefaults(channel).vertex_api_version).toBe(
+          version
+        )
+      }
+    )
+
+    test('keeps v1 as the default and rejects unsupported versions', () => {
+      expect(savedSettings(vertexAPIKeyForm()).vertex_api_version).toBe('v1')
+      expect(
+        channelFormSchema.safeParse({
+          ...vertexAPIKeyForm(),
+          vertex_api_version: 'v2',
+        }).success
+      ).toBe(false)
+    })
+
+    test('removes the Vertex endpoint setting when switching providers', () => {
+      expect(
+        savedSettings(
+          vertexAPIKeyForm({
+            type: 1,
+            settings: '{"vertex_api_version":"v1beta1"}',
+          })
+        )
+      ).not.toHaveProperty('vertex_api_version')
+    })
+  })
+
   test('accepts API Key mode without a project ID and saves none', () => {
     const form = vertexAPIKeyForm({ vertex_project_id: '  ' })
 
