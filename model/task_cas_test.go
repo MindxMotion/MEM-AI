@@ -17,14 +17,23 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	var (
+		db     *gorm.DB
+		err    error
+		dbType = common.DatabaseTypeSQLite
+	)
+	if os.Getenv("TEST_MODEL_SQL_DSN") != "" {
+		db, dbType, err = chooseDB("TEST_MODEL_SQL_DSN", false)
+	} else {
+		db, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	}
 	if err != nil {
 		panic("failed to open test db: " + err.Error())
 	}
 	DB = db
 	LOG_DB = db
 
-	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.SetDatabaseTypes(dbType, dbType)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
