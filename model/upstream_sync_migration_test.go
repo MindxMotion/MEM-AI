@@ -77,7 +77,7 @@ func TestUpstreamSyncStartupDatabase(t *testing.T) {
 		assert.Equal(t, "synthetic-fixture-key", channel.Key)
 		assert.Equal(t, common.ChannelStatusEnabled, channel.Status)
 		assert.Equal(t, 7.25, channel.Balance)
-		assert.Equal(t, 1234, channel.UsedQuota)
+		assert.Equal(t, int64(1234), channel.UsedQuota)
 		assert.Equal(t, profile, channel.OtherSettings)
 		var log Log
 		require.NoError(t, LOG_DB.First(&log, 700001).Error)
