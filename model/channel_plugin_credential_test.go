@@ -111,21 +111,32 @@ func TestUpdateChannelLocked(t *testing.T) {
 		return failure
 	})
 	assert.ErrorIs(t, err, failure)
-
-	_, err = UpdateChannelLocked(channel.Id, func(stored *Channel) error {
-		// A key write that skipped the lock lands while the plugin runs.
-		require.NoError(t, DB.Model(&Channel{}).Where("id = ?", stored.Id).Update("key", "edited").Error)
-		stored.Key = "third"
-		return nil
-	})
-	assert.ErrorIs(t, err, ErrChannelKeyChanged)
 	current, err := GetChannelById(channel.Id, true)
 	require.NoError(t, err)
-	assert.Equal(t, "edited", current.Key, "a lost race never overwrites the newer key")
+	assert.Equal(t, "second", current.Key, "a failed callback leaves the stored key unchanged")
 
+	expectedKey := "second"
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		// Row locks prevent this interleaving on MySQL and PostgreSQL.
+		_, err = UpdateChannelLocked(channel.Id, func(stored *Channel) error {
+			require.NoError(t, DB.Model(&Channel{}).Where("id = ?", stored.Id).Update("key", "edited").Error)
+			stored.Key = "third"
+			return nil
+		})
+		assert.ErrorIs(t, err, ErrChannelKeyChanged)
+		current, err = GetChannelById(channel.Id, true)
+		require.NoError(t, err)
+		assert.Equal(t, "edited", current.Key, "a lost race never overwrites the newer key")
+		expectedKey = "edited"
+	}
+
+	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		require.NoError(t, DB.Model(&Channel{}).Where("id = ?", channel.Id).Update("channel_info", ChannelInfo{MultiKeyPollingIndex: 3}).Error)
+	}
 	_, err = UpdateChannelLocked(channel.Id, func(stored *Channel) error {
-		// The polling cursor moves while the status changes.
-		require.NoError(t, DB.Model(&Channel{}).Where("id = ?", stored.Id).Update("channel_info", ChannelInfo{MultiKeyPollingIndex: 3}).Error)
+		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			require.NoError(t, DB.Model(&Channel{}).Where("id = ?", stored.Id).Update("channel_info", ChannelInfo{MultiKeyPollingIndex: 3}).Error)
+		}
 		stored.Status = common.ChannelStatusAutoDisabled
 		return nil
 	})
@@ -134,7 +145,7 @@ func TestUpdateChannelLocked(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, common.ChannelStatusAutoDisabled, current.Status)
 	assert.Equal(t, 3, current.ChannelInfo.MultiKeyPollingIndex, "only the changed columns are written")
-	assert.Equal(t, "edited", current.Key)
+	assert.Equal(t, expectedKey, current.Key)
 	var enabled []bool
 	require.NoError(t, DB.Model(&Ability{}).Where("channel_id = ?", channel.Id).Pluck("enabled", &enabled).Error)
 	assert.Equal(t, []bool{false}, enabled, "a new status reaches the abilities")
