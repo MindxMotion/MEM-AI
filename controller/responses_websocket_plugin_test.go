@@ -95,6 +95,7 @@ func TestResponsesWebSocketRunsRequestPlugins(t *testing.T) {
 			}
 		}
 	})
+	flushErrorLogs := useRequestPluginErrorLogWriter(t)
 	client := fixture.client
 	create := func(input string) {
 		require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"`+input+`"}`)))
@@ -171,6 +172,7 @@ func TestResponsesWebSocketRunsRequestPlugins(t *testing.T) {
 		assert.JSONEq(t, want, stripRecordNames(t, record.Raw), logs[index].Other)
 	}
 	var errorLogs []model.Log
+	flushErrorLogs()
 	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Find(&errorLogs).Error)
 	require.Len(t, errorLogs, 1)
 	assert.Contains(t, errorLogs[0].Content, "Blocked")

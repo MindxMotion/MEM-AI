@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -42,6 +43,22 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func useRequestPluginErrorLogWriter(t *testing.T) func() {
+	t.Helper()
+	model.StartErrorLogWriter()
+	stop := func() {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, model.StopErrorLogWriter(ctx))
+	}
+	t.Cleanup(stop)
+	return func() {
+		stop()
+		model.StartErrorLogWriter()
+	}
+}
 
 const (
 	relayTestToken = "providerrelaytoken"
@@ -2032,6 +2049,7 @@ export function outbound(ctx, req) {
 	previousErrorLog := constant.ErrorLogEnabled
 	constant.ErrorLogEnabled = true
 	t.Cleanup(func() { constant.ErrorLogEnabled = previousErrorLog })
+	flushErrorLogs := useRequestPluginErrorLogWriter(t)
 	harness.upstream.reset()
 	channel.SetSetting(dto.ChannelSettings{RequestPlugins: []string{"block"}})
 	harness.install(t, channel)
@@ -2042,6 +2060,7 @@ export function outbound(ctx, req) {
 	assert.Empty(t, harness.upstream.captured())
 	assert.Zero(t, outcome.quota)
 	var errorLog model.Log
+	flushErrorLogs()
 	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id DESC").First(&errorLog).Error)
 	assert.JSONEq(t, `{"plugin":"rp-relay","name":{"en":"Redact"},"stage":"outbound","rejected":{"code":"blocked.upstream"}}`,
 		gjson.Get(errorLog.Other, `request_plugins.#(rejected.code=="blocked.upstream")`).Raw)
@@ -2056,6 +2075,7 @@ export function outbound(ctx, req) {
 	assert.Contains(t, outcome.body, "Not at the door (code: blocked.door)")
 	assert.Empty(t, harness.upstream.captured())
 	errorLog = model.Log{}
+	flushErrorLogs()
 	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id DESC").First(&errorLog).Error)
 	assert.Zero(t, errorLog.ChannelId)
 	assert.Equal(t, relayTestModel, errorLog.ModelName)
@@ -2270,6 +2290,7 @@ export function ingress(ctx, req) {
 	previousErrorLog := constant.ErrorLogEnabled
 	constant.ErrorLogEnabled = true
 	t.Cleanup(func() { constant.ErrorLogEnabled = previousErrorLog })
+	flushErrorLogs := useRequestPluginErrorLogWriter(t)
 	channel := harness.newChannel(constant.ChannelTypeMidjourney, "mj-secret")
 	channel.Models = "mj_imagine"
 	harness.install(t, channel)
@@ -2284,6 +2305,7 @@ export function ingress(ctx, req) {
 	assert.Empty(t, harness.upstream.captured())
 	assert.Zero(t, outcome.quota)
 	var errorLog model.Log
+	flushErrorLogs()
 	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id DESC").First(&errorLog).Error)
 	assert.Equal(t, "mj_imagine", errorLog.ModelName)
 	assert.JSONEq(t, `[{"plugin":"rp-mj","name":{"en":"Redact"},"stage":"ingress","rejected":{"code":"blocked.mj"}}]`,

@@ -34,6 +34,22 @@ import (
 	"gorm.io/gorm"
 )
 
+func useRequestPluginErrorLogWriter(t *testing.T) func() {
+	t.Helper()
+	model.StartErrorLogWriter()
+	stop := func() {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, model.StopErrorLogWriter(ctx))
+	}
+	t.Cleanup(stop)
+	return func() {
+		stop()
+		model.StartErrorLogWriter()
+	}
+}
+
 type nativeRouteBilling struct {
 	events      []string
 	preConsumed int
@@ -447,6 +463,10 @@ func TestTaskSubmissionRunsRequestPlugins(t *testing.T) {
 	previousMemoryCache, previousBatchUpdate, previousLogConsume, previousRedis, previousErrorLog := common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled, common.RedisEnabled, constant.ErrorLogEnabled
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := database.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Channel{}, &model.Task{}, &model.Log{}))
 	model.DB, model.LOG_DB = database, database
 	common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled, common.RedisEnabled, constant.ErrorLogEnabled = false, false, true, false, true
@@ -458,6 +478,7 @@ func TestTaskSubmissionRunsRequestPlugins(t *testing.T) {
 		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previousPrices))
 		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{request_plugin_setting.InstancesOption: "[]"}))
 	})
+	flushErrorLogs := useRequestPluginErrorLogWriter(t)
 	require.NoError(t, database.Create(&model.User{Id: 7, Username: "task-plugins-user", Group: "default", Quota: 1_000_000}).Error)
 
 	var sent []string
@@ -522,6 +543,7 @@ export function egress(ctx, req) {
 		return recorder, billing, taskErr
 	}
 	lastLog := func(logType int) model.Log {
+		flushErrorLogs()
 		var entry model.Log
 		require.NoError(t, database.Where("type = ?", logType).Order("id DESC").First(&entry).Error)
 		return entry
