@@ -68,6 +68,8 @@ jobs:
       TEST_MANAGE_USER_SEPARATE_LOG_DB: '1'
       TEST_MYSQL_DSN: root:${{ github.run_id }}-${{ github.run_attempt }}-fixture@tcp(127.0.0.1:3306)/fixture?charset=utf8mb4&parseTime=True&loc=UTC
       TEST_POSTGRES_DSN: postgres://postgres:${{ github.run_id }}-${{ github.run_attempt }}-fixture@127.0.0.1:5432/fixture?sslmode=disable
+      BALANCE_TEST_MYSQL_DSN: root:${{ github.run_id }}-${{ github.run_attempt }}-fixture@tcp(127.0.0.1:3306)/fixture?charset=utf8mb4&parseTime=True&loc=UTC
+      BALANCE_TEST_POSTGRES_DSN: postgres://postgres:${{ github.run_id }}-${{ github.run_attempt }}-fixture@127.0.0.1:5432/fixture?sslmode=disable
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
@@ -79,6 +81,47 @@ jobs:
             tokenkit/go.sum
       - name: Create frontend embed placeholder
         run: mkdir -p web/dist && touch web/dist/index.html
+      - name: Verify fresh databases and upgrades from v1.0.0-rc.51
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="${{ github.run_id }}-${{ github.run_attempt }}-fixture"
+          for database in sync_fresh sync_fresh_log sync_upgrade sync_upgrade_log; do
+            docker exec ${{ job.services.mysql.id }} mysql -uroot -p"$fixture" \
+              -e "CREATE DATABASE $database CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            docker exec ${{ job.services.postgres.id }} psql -U postgres \
+              -c "CREATE DATABASE $database;"
+          done
+          git fetch --depth=1 https://github.com/QuantumNous/new-api.git \
+            c9c6da2786b6a0912215127e78e28fbc6650c85f
+          released="$RUNNER_TEMP/released-schema"
+          git worktree add --detach "$released" FETCH_HEAD
+          cp model/upstream_sync_migration_test.go "$released/model/"
+          mkdir -p "$released/web/dist"
+          touch "$released/web/dist/index.html"
+          for dialect in sqlite mysql postgres; do
+            for mode in fresh seed upgrade; do
+              database=sync_upgrade
+              if [[ "$mode" == fresh ]]; then database=sync_fresh; fi
+              export SYNC_SQLITE_PATH="$RUNNER_TEMP/${dialect}-${database}.db"
+              export SYNC_SQLITE_LOG_PATH="$RUNNER_TEMP/${dialect}-${database}-log.db"
+              export SYNC_SQL_DSN=local SYNC_LOG_SQL_DSN=local SYNC_DATABASE_MODE="$mode"
+              if [[ "$dialect" == mysql ]]; then
+                export SYNC_SQL_DSN="root:$fixture@tcp(127.0.0.1:3306)/$database?charset=utf8mb4&parseTime=True&loc=UTC"
+                export SYNC_LOG_SQL_DSN="root:$fixture@tcp(127.0.0.1:3306)/${database}_log?charset=utf8mb4&parseTime=True&loc=UTC"
+              elif [[ "$dialect" == postgres ]]; then
+                export SYNC_SQL_DSN="postgres://postgres:$fixture@127.0.0.1:5432/$database?sslmode=disable"
+                export SYNC_LOG_SQL_DSN="postgres://postgres:$fixture@127.0.0.1:5432/${database}_log?sslmode=disable"
+              fi
+              if [[ "$mode" == seed ]]; then
+                (cd "$released" && go test -mod=readonly -p=1 ./model -run '^TestUpstreamSyncStartupDatabase$' -count=1 -v)
+              else
+                go test -mod=readonly -p=1 ./model -run '^TestUpstreamSyncStartupDatabase$' -count=1 -v
+              fi
+            done
+          done
+          rm "$released/model/upstream_sync_migration_test.go"
+          git worktree remove "$released"
       - name: Verify real SQLite, MySQL and PostgreSQL instances
         shell: bash
         run: |
@@ -95,12 +138,15 @@ jobs:
               go test -mod=readonly -p=1 ./controller \
               -run '^Test(AddChannel|MultiKeyEnableRestoresOnlyExhaustedChannels)' -count=1 -v
             TEST_MODEL_SQL_DSN="$channel_dsn" \
+              TEST_TASK_DB_DIALECT="$dialect" \
               go test -mod=readonly -p=1 ./model \
-              -run '^Test(AutoDisableKeepsManualDisable|ModelPricingIssuesFollowPluginChanges|ModelPricingSnapshotListsUsedBuiltinPrices)$' \
+              -run '^Test(AutoDisableKeepsManualDisable|ModelPricingIssuesFollowPluginChanges|ModelPricingSnapshotListsUsedBuiltinPrices|UpdateChannelLocked|UpdateAuthFlowPayload|ScheduledChannel|MigrateSensitiveWords)' \
               -count=1 -v
           done
           go test -mod=readonly -p=1 ./model \
-            -run 'DatabaseMatrix|Migration|MigrateToken' -count=1 -v
+            -run 'DatabaseMatrix|Migration|MigrateToken|UpstreamBalanceSettingsDatabaseRoundTrip' -count=1 -v
+          go test -mod=readonly -p=1 ./controller \
+            -run 'ProviderChannelManagementDatabaseMatrix|UpstreamBalanceSettingsDatabaseRoundTrip' -count=1 -v
       - name: Vet and test complete gateway
         run: |
           go vet -mod=readonly ./...
