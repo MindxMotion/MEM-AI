@@ -2,27 +2,43 @@ package model
 
 import (
 	"fmt"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 func useFrontendOptionMigrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	previousDB := DB
 	previousType := common.MainDatabaseType()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	var driver gorm.Dialector = sqlite.Open(":memory:")
+	dbType := common.DatabaseTypeSQLite
+	if os.Getenv("TEST_MODEL_SQL_DSN") != "" {
+		driver = previousDB.Dialector
+		dbType = previousType
+	}
+	db, err := gorm.Open(driver, &gorm.Config{NamingStrategy: schema.NamingStrategy{
+		TablePrefix: fmt.Sprintf("frontend_migration_%d_", time.Now().UnixNano()),
+	}})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&Option{}))
 	DB = db
-	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.SetMainDatabaseType(dbType)
 	t.Cleanup(func() {
+		require.NoError(t, db.Migrator().DropTable(&SystemTask{}, &Option{}))
 		DB = previousDB
 		common.SetMainDatabaseType(previousType)
+		require.NoError(t, sqlDB.Close())
 	})
 	return db
 }
