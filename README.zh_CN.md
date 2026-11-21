@@ -244,6 +244,12 @@ docker compose logs -f new-api
 
 正式部署时使用 HTTPS，并配置反向代理支持流式响应与 WebSocket 升级。持久化并备份数据库和挂载数据。多节点必须共用主数据库和鉴权密钥；独立 Redis 或内存限流器会按节点分别计数。不同拓扑下的会话传播行为见鉴权文档。
 
+### 配置 MEM AI 的浏览器标签页标题
+
+以超级管理员身份打开 **系统设置 → 系统信息**，将 **系统名称**（`SystemName`）设为 `MEM AI · New API` 并保存。刷新页面后，前端会读取 `/api/status` 返回的 `system_name`，更新浏览器标签页标题。此设置也会更改站内显示的系统名称。
+
+这是实例级配置，不需要重新构建。原始 HTML 的默认标题仍为 `New API`；自定义标题在前端读取到系统名称后生效。
+
 从[发布页](https://github.com/QuantumNous/new-api/releases)选择明确的镜像版本，阅读升级说明并先备份再升级。`latest` 会随发布构建变化；已有实例应按实际版本评估迁移与兼容性。
 
 <a id="development"></a>
